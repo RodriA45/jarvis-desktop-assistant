@@ -1,0 +1,37 @@
+# ── Core ──────────────────────────────────────────────────────────────────
+anthropic>=0.40.0
+
+# ── HUD (ventana) ─────────────────────────────────────────────────────────
+pywebview>=5.0.0
+
+# ── STT ───────────────────────────────────────────────────────────────────
+openai-whisper>=20231117
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# ── TTS ───────────────────────────────────────────────────────────────────
+pyttsx3>=2.90
+
+# ── Wake word (opcional) ──────────────────────────────────────────────────
+# pvporcupine>=3.0.0
+
+# ── Control del sistema ───────────────────────────────────────────────────
+pyautogui>=0.9.54
+psutil>=5.9.0
+
+# ── Control de volumen Windows ────────────────────────────────────────────
+pycaw>=20230407
+comtypes>=1.2.0
+
+# ── Búsqueda web ──────────────────────────────────────────────────────────
+duckduckgo-search>=6.0.0
+
+# ── Reconocimiento de voz fallback ────────────────────────────────────────
+SpeechRecognition>=3.10.0
+
+# ── Requests (para ElevenLabs TTS) ───────────────────────────────────────
+requests>=2.31.0
+soundfile>=0.12.1
+
+# ── Memoria semántica (opcional - mejora la búsqueda) ────────────────────
+# sentence-transformers>=2.0.0  # instalar si querés embeddings reales

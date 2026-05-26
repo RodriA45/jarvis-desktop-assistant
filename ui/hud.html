@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>J.A.R.V.I.S</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none}
+body{background:#000;color:#00d4ff;font-family:'Courier New',Courier,monospace;overflow:hidden;height:100vh;width:100vw}
+
+/* ── ANIMACIONES ── */
+@keyframes scanline{0%{top:-4px}100%{top:100vh}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes spin-rev{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes glitch{0%,91%,100%{transform:translate(0)}92%{transform:translate(-4px,1px)}94%{transform:translate(4px,-1px)}96%{transform:translate(-2px,2px)}98%{transform:translate(2px,-1px)}}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes radar-ping{0%{r:2;opacity:1}100%{r:68;opacity:0}}
+@keyframes bootbar{from{width:0}to{width:100%}}
+@keyframes bootfade{from{opacity:0}to{opacity:1}}
+@keyframes reminder-flash{0%,100%{border-color:rgba(255,170,0,.3)}50%{border-color:rgba(255,170,0,.9);box-shadow:0 0 12px rgba(255,170,0,.4)}}
+@keyframes config-slide{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── BOOT SCREEN ── */
+#boot-screen{
+  position:fixed;inset:0;background:#000;z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  animation:bootfade .5s ease;
+}
+.boot-logo{font-size:48px;font-weight:900;letter-spacing:16px;color:#00d4ff;
+  text-shadow:0 0 30px rgba(0,212,255,.6),0 0 60px rgba(0,212,255,.3);}
+.boot-sub{font-size:9px;letter-spacing:6px;color:rgba(0,212,255,.4);margin-top:-8px;}
+.boot-steps{width:420px;display:flex;flex-direction:column;gap:6px;margin-top:16px;}
+.boot-step{font-size:10px;letter-spacing:2px;color:rgba(0,212,255,.3);transition:color .3s;}
+.boot-step.done{color:#00ff88;}
+.boot-step.active{color:#00d4ff;animation:pulse .6s infinite;}
+.boot-bar-wrap{width:420px;height:2px;background:rgba(0,212,255,.1);border-radius:2px;overflow:hidden;}
+.boot-bar{height:100%;background:#00d4ff;width:0;border-radius:2px;box-shadow:0 0 8px rgba(0,212,255,.6);}
+.boot-pct{font-size:9px;color:rgba(0,212,255,.5);letter-spacing:2px;align-self:flex-start;margin-left:calc(50vw - 210px);}
+
+/* ── HUD PRINCIPAL ── */
+#hud{position:relative;width:100vw;height:100vh;background:#000;overflow:hidden;display:flex;flex-direction:column;padding:14px 18px 10px;opacity:0;transition:opacity .8s ease;}
+#hud.visible{opacity:1;}
+.scanline{position:absolute;left:0;width:100%;height:3px;background:linear-gradient(transparent,rgba(0,212,255,.07),transparent);animation:scanline 4s linear infinite;pointer-events:none;z-index:100}
+.grid-bg{position:absolute;inset:0;background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:50px 50px;pointer-events:none}
+.vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,.7) 100%);pointer-events:none;z-index:2}
+.hud-frame{position:absolute;inset:6px;border:1px solid rgba(0,212,255,.18);pointer-events:none;z-index:3}
+.corner{position:absolute;width:24px;height:24px;border-color:#00d4ff;border-style:solid;opacity:.7;z-index:4}
+.c-tl{top:6px;left:6px;border-width:2px 0 0 2px}
+.c-tr{top:6px;right:6px;border-width:2px 2px 0 0}
+.c-bl{bottom:6px;left:6px;border-width:0 0 2px 2px}
+.c-br{bottom:6px;right:6px;border-width:0 2px 2px 0}
+
+/* ── TOP BAR ── */
+.top-bar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(0,212,255,.22);padding-bottom:10px;margin-bottom:12px;position:relative;z-index:5}
+.logo{font-size:clamp(18px,2.5vw,26px);font-weight:900;letter-spacing:8px;color:#00d4ff;animation:glitch 9s infinite;text-shadow:0 0 20px rgba(0,212,255,.4)}
+.logo-sub{font-size:8px;letter-spacing:3px;color:rgba(0,212,255,.4);margin-top:2px}
+.status-area{text-align:center}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#00ff88;animation:pulse 1.4s infinite;display:inline-block;margin-right:6px;box-shadow:0 0 8px rgba(0,255,136,.6)}
+.status-txt{font-size:10px;color:#00ff88;letter-spacing:2px}
+.time-area{text-align:right}
+.clock{font-size:clamp(14px,1.8vw,20px);color:#00d4ff;letter-spacing:2px;font-weight:bold}
+.date-txt{font-size:8px;color:rgba(0,212,255,.45);letter-spacing:2px;margin-top:2px}
+.uptime{font-size:8px;color:rgba(0,212,255,.35);letter-spacing:1px;margin-top:1px}
+
+/* ── MAIN LAYOUT ── */
+.main{display:grid;grid-template-columns:1fr 200px 1fr;gap:16px;flex:1;min-height:0;position:relative;z-index:5}
+.panel{display:flex;flex-direction:column;gap:10px}
+.section-title{font-size:8px;letter-spacing:3px;color:rgba(0,212,255,.4);margin-bottom:4px;text-transform:uppercase;border-bottom:1px solid rgba(0,212,255,.12);padding-bottom:3px}
+
+/* ── BARS ── */
+.bar-row{margin:3px 0}
+.bar-label{font-size:9px;color:rgba(0,212,255,.55);letter-spacing:1px;display:flex;justify-content:space-between;margin-bottom:3px}
+.bar-track{height:3px;background:rgba(0,212,255,.1);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;background:#00d4ff;border-radius:2px;transition:width 1.2s ease;box-shadow:0 0 6px rgba(0,212,255,.5)}
+.bar-fill.warn{background:#ffaa00;box-shadow:0 0 6px rgba(255,170,0,.5)}
+.bar-fill.crit{background:#ff4444;box-shadow:0 0 6px rgba(255,68,68,.5)}
+
+/* ── MODULES ── */
+.mod-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(0,212,255,.08)}
+.mod-name{font-size:9px;color:rgba(0,212,255,.55);letter-spacing:1px}
+.mod-status{font-size:9px;letter-spacing:1px;font-weight:bold}
+.s-ok{color:#00ff88}.s-warn{color:#ffaa00}.s-off{color:rgba(0,212,255,.3)}
+
+/* ── CENTER ── */
+.center-panel{display:flex;flex-direction:column;align-items:center;gap:10px}
+.arc-container{position:relative;width:clamp(140px,14vw,180px);height:clamp(140px,14vw,180px)}
+.arc-svg{width:100%;height:100%}
+.arc-inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.arc-pct{font-size:clamp(22px,3vw,32px);font-weight:bold;color:#00d4ff;line-height:1;text-shadow:0 0 15px rgba(0,212,255,.6)}
+.arc-lbl{font-size:7px;letter-spacing:3px;color:rgba(0,212,255,.4);margin-top:3px}
+.ring-a{animation:spin 10s linear infinite;transform-origin:center}
+.ring-b{animation:spin-rev 6s linear infinite;transform-origin:center}
+
+/* ── VOICE ── */
+.voice-section{width:100%;text-align:center}
+.voice-bars{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:28px;margin:6px 0}
+.vb{width:5px;background:#00d4ff;border-radius:2px;transform-origin:bottom;opacity:.5;transition:height .15s}
+.voice-label{font-size:8px;letter-spacing:2px;color:rgba(0,212,255,.4)}
+
+/* ── RESPONSE ── */
+.response-box{width:100%;background:rgba(0,212,255,.04);border:1px solid rgba(0,212,255,.15);padding:8px 10px;min-height:52px;font-size:10px;color:rgba(0,212,255,.85);line-height:1.7;letter-spacing:.3px;word-break:break-word}
+.cursor{animation:blink 1s infinite;color:#00d4ff}
+
+/* ── LOG ── */
+.log-box{background:rgba(0,0,0,.4);border:1px solid rgba(0,212,255,.12);padding:6px 8px;height:90px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:1px}
+.log-line{font-size:8px;display:flex;gap:6px;animation:fadeup .3s ease;line-height:1.6}
+.log-ts{color:rgba(0,212,255,.3)}.log-msg{color:rgba(0,212,255,.6)}
+.log-ok .log-msg{color:#00ff88}.log-warn .log-msg{color:#ffaa00}.log-active .log-msg{color:#00d4ff}
+
+/* ── STATS ── */
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(0,212,255,.08)}
+.stat-k{font-size:9px;color:rgba(0,212,255,.5);letter-spacing:1px}
+.stat-v{font-size:9px;color:#00d4ff;font-weight:bold;letter-spacing:1px}
+
+/* ── RADAR ── */
+.radar-wrap{position:relative;width:80px;height:80px;margin:0 auto}
+.radar-svg{width:80px;height:80px}
+.radar-sweep{animation:spin 3s linear infinite;transform-origin:40px 40px}
+.radar-ping{animation:radar-ping 2s ease-out infinite}
+
+/* ── ALERT BAR ── */
+.alert-bar{background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.18);padding:5px 8px;display:flex;align-items:center;gap:8px}
+.alert-text{font-size:8px;color:rgba(0,212,255,.65);letter-spacing:1px}
+
+/* ── RECORDATORIOS ── */
+.reminders-box{background:rgba(0,0,0,.4);border:1px solid rgba(0,212,255,.12);padding:5px 7px;max-height:70px;overflow:hidden;display:flex;flex-direction:column;gap:2px}
+.rem-item{font-size:8px;color:rgba(255,170,0,.8);letter-spacing:.5px;display:flex;justify-content:space-between}
+.rem-time{color:rgba(255,170,0,.5)}
+
+/* ── REMINDER TOAST ── */
+#reminder-toast{
+  position:fixed;top:50px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.9);border:1px solid rgba(255,170,0,.6);
+  padding:10px 20px;font-size:11px;letter-spacing:2px;color:#ffaa00;
+  display:none;z-index:8000;text-align:center;
+  animation:reminder-flash 1s infinite;
+}
+
+/* ── CONFIG PANEL ── */
+#config-panel{
+  position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:7000;
+  display:none;align-items:center;justify-content:center;
+}
+#config-panel.open{display:flex;}
+.config-box{
+  background:#000;border:1px solid rgba(0,212,255,.4);
+  padding:24px 28px;width:420px;animation:config-slide .3s ease;
+}
+.cfg-title{font-size:12px;letter-spacing:4px;color:#00d4ff;margin-bottom:16px;border-bottom:1px solid rgba(0,212,255,.2);padding-bottom:8px}
+.cfg-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cfg-label{font-size:9px;color:rgba(0,212,255,.6);letter-spacing:1px}
+.cfg-val{font-size:9px;color:#00d4ff;font-weight:bold;min-width:60px;text-align:right}
+.cfg-input{background:rgba(0,212,255,.07);border:1px solid rgba(0,212,255,.25);color:#00d4ff;font-family:'Courier New',monospace;font-size:9px;padding:3px 8px;width:140px;letter-spacing:1px}
+.cfg-select{background:#000;border:1px solid rgba(0,212,255,.25);color:#00d4ff;font-family:'Courier New',monospace;font-size:9px;padding:3px 6px;letter-spacing:1px}
+.cfg-slider{width:140px;accent-color:#00d4ff;cursor:pointer}
+.cfg-btn{background:transparent;border:1px solid rgba(0,212,255,.4);color:#00d4ff;font-family:'Courier New',monospace;font-size:9px;padding:6px 14px;cursor:pointer;letter-spacing:2px;margin-top:12px;margin-right:8px;transition:all .2s}
+.cfg-btn:hover{background:rgba(0,212,255,.12);border-color:#00d4ff}
+.cfg-btn.danger{border-color:rgba(255,68,68,.5);color:#ff4444}
+.cfg-btn.danger:hover{background:rgba(255,68,68,.1)}
+
+/* ── BOTTOM ── */
+.bottom-bar{display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(0,212,255,.18);padding-top:8px;margin-top:8px;position:relative;z-index:5}
+.bottom-left{font-size:7px;color:rgba(0,212,255,.3);letter-spacing:1px}
+.bottom-right{font-size:7px;color:rgba(0,212,255,.3);letter-spacing:1px;text-align:right}
+
+.mic-btn{background:transparent;border:1px solid rgba(0,212,255,.45);color:#00d4ff;padding:6px 18px;font-family:'Courier New',monospace;font-size:9px;letter-spacing:2px;cursor:pointer;transition:all .25s;text-transform:uppercase}
+.mic-btn:hover{background:rgba(0,212,255,.15);border-color:#00d4ff;box-shadow:0 0 10px rgba(0,212,255,.3)}
+.mic-btn.active{background:rgba(0,255,136,.12);border-color:#00ff88;color:#00ff88;animation:pulse .8s infinite}
+.cfg-open-btn{background:transparent;border:1px solid rgba(0,212,255,.25);color:rgba(0,212,255,.5);padding:5px 10px;font-family:'Courier New',monospace;font-size:8px;letter-spacing:2px;cursor:pointer;transition:all .2s;margin-left:8px}
+.cfg-open-btn:hover{border-color:#00d4ff;color:#00d4ff}
+
+.drag-area{-webkit-app-region:drag;position:absolute;top:0;left:0;right:0;height:40px;z-index:1}
+.no-drag{-webkit-app-region:no-drag}
+</style>
+</head>
+<body>
+
+<!-- ── BOOT SCREEN ── -->
+<div id="boot-screen">
+  <div class="boot-logo">J.A.R.V.I.S</div>
+  <div class="boot-sub">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+  <div class="boot-pct" id="boot-pct">0%</div>
+  <div class="boot-bar-wrap"><div class="boot-bar" id="boot-bar"></div></div>
+  <div class="boot-steps" id="boot-steps"></div>
+</div>
+
+<!-- ── REMINDER TOAST ── -->
+<div id="reminder-toast" id="reminder-toast">⏰ RECORDATORIO</div>
+
+<!-- ── CONFIG PANEL ── -->
+<div id="config-panel">
+  <div class="config-box no-drag">
+    <div class="cfg-title">⚙ CONFIGURACIÓN DEL SISTEMA</div>
+
+    <div class="cfg-row">
+      <span class="cfg-label">MOTOR TTS</span>
+      <select class="cfg-select" id="cfg-tts-engine">
+        <option value="pyttsx3">pyttsx3 (offline)</option>
+        <option value="elevenlabs">ElevenLabs (online)</option>
+      </select>
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-label">VELOCIDAD VOZ</span>
+      <span class="cfg-val" id="cfg-rate-val">175</span>
+      <input class="cfg-slider" type="range" id="cfg-rate" min="80" max="280" value="175"
+        oninput="document.getElementById('cfg-rate-val').textContent=this.value">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-label">VOLUMEN TTS</span>
+      <span class="cfg-val" id="cfg-vol-val">95%</span>
+      <input class="cfg-slider" type="range" id="cfg-vol" min="0" max="100" value="95"
+        oninput="document.getElementById('cfg-vol-val').textContent=this.value+'%'">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-label">MODELO WHISPER</span>
+      <select class="cfg-select" id="cfg-whisper">
+        <option value="tiny">tiny (rápido)</option>
+        <option value="base" selected>base</option>
+        <option value="small">small</option>
+        <option value="medium">medium (preciso)</option>
+      </select>
+    </div>
+    <div class="cfg-row" id="cfg-apikey-row">
+      <span class="cfg-label">API KEY ANTHROPIC</span>
+      <input class="cfg-input" type="password" id="cfg-apikey" placeholder="sk-ant-...">
+    </div>
+    <div class="cfg-row" id="cfg-gemini-apikey-row" style="display:none">
+      <span class="cfg-label">API KEY GEMINI</span>
+      <input class="cfg-input" type="password" id="cfg-gemini-apikey" placeholder="AIzaSy...">
+    </div>
+    <div class="cfg-row">
+      <span class="cfg-label">PROVEEDOR LLM</span>
+      <select class="cfg-select" id="cfg-llm-provider" onchange="jarvis.updateLlmProviderFields(this.value)">
+        <option value="offline">Modo Demo (offline sin keys)</option>
+        <option value="anthropic">Claude API (online)</option>
+        <option value="gemini">Gemini API (online)</option>
+        <option value="ollama">Ollama (local)</option>
+      </select>
+    </div>
+    <div class="cfg-row" id="cfg-ollama-model-row" style="display:none">
+      <span class="cfg-label">MODELO OLLAMA</span>
+      <input class="cfg-input" type="text" id="cfg-ollama-model" placeholder="llama3">
+    </div>
+
+    <div style="margin-top:8px">
+      <button class="cfg-btn" onclick="jarvis.saveSettings()">GUARDAR</button>
+      <button class="cfg-btn" onclick="jarvis.closeConfig()">CANCELAR</button>
+      <button class="cfg-btn danger" onclick="jarvis.clearMemory()">BORRAR MEMORIA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── HUD PRINCIPAL ── -->
+<div id="hud">
+  <div class="drag-area"></div>
+  <div class="grid-bg"></div>
+  <div class="scanline"></div>
+  <div class="vignette"></div>
+  <div class="hud-frame"></div>
+  <div class="corner c-tl"></div><div class="corner c-tr"></div>
+  <div class="corner c-bl"></div><div class="corner c-br"></div>
+
+  <!-- TOP BAR -->
+  <div class="top-bar no-drag">
+    <div>
+      <div class="logo">J.A.R.V.I.S</div>
+      <div class="logo-sub">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+    </div>
+    <div class="status-area">
+      <div><span class="status-dot" id="status-dot"></span><span class="status-txt" id="status-txt">SISTEMA EN LÍNEA</span></div>
+      <div class="uptime" id="uptime-el">UPTIME: 00:00:00</div>
+    </div>
+    <div class="time-area">
+      <div class="clock" id="clock-el">--:--:--</div>
+      <div class="date-txt" id="date-el">---</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main no-drag">
+
+    <!-- LEFT -->
+    <div class="panel">
+      <div>
+        <div class="section-title">Recursos del sistema</div>
+        <div class="bar-row">
+          <div class="bar-label"><span>CPU</span><span id="cpu-val">0%</span></div>
+          <div class="bar-track"><div class="bar-fill" id="cpu-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>RAM</span><span id="ram-val">0%</span></div>
+          <div class="bar-track"><div class="bar-fill" id="ram-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>DISCO</span><span id="disk-val">--%</span></div>
+          <div class="bar-track"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>RED TX</span><span id="net-val">-- MB/s</span></div>
+          <div class="bar-track"><div class="bar-fill" id="net-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>TEMP CPU</span><span id="temp-val">--°C</span></div>
+          <div class="bar-track"><div class="bar-fill" id="temp-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row" id="gpu-row" style="display:none">
+          <div class="bar-label"><span>GPU</span><span id="gpu-val">--%</span></div>
+          <div class="bar-track"><div class="bar-fill" id="gpu-bar" style="width:0%"></div></div>
+        </div>
+        <div class="bar-row" id="gpu-temp-row" style="display:none">
+          <div class="bar-label"><span>TEMP GPU</span><span id="gpu-temp-val">--°C</span></div>
+          <div class="bar-track"><div class="bar-fill" id="gpu-temp-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Módulos</div>
+        <div class="mod-row"><span class="mod-name">WAKE WORD</span><span class="mod-status s-ok" id="m-wake">ACTIVO</span></div>
+        <div class="mod-row"><span class="mod-name">WHISPER STT</span><span class="mod-status s-ok" id="m-stt">ACTIVO</span></div>
+        <div class="mod-row"><span class="mod-name">CLAUDE API</span><span class="mod-status s-ok" id="m-claude">CONECTADO</span></div>
+        <div class="mod-row"><span class="mod-name">TTS ENGINE</span><span class="mod-status s-ok" id="m-tts">LISTO</span></div>
+        <div class="mod-row"><span class="mod-name">VISIÓN IA</span><span class="mod-status s-ok" id="m-vision">ACTIVA</span></div>
+        <div class="mod-row"><span class="mod-name">MEMORIA</span><span class="mod-status s-ok" id="m-mem">SEMÁNTICA</span></div>
+      </div>
+
+      <div>
+        <div class="section-title">Actividad reciente</div>
+        <div class="log-box" id="log-box"></div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center-panel">
+      <div class="arc-container">
+        <svg class="arc-svg" viewBox="0 0 160 160">
+          <circle cx="80" cy="80" r="74" fill="none" stroke="rgba(0,212,255,.06)" stroke-width="1"/>
+          <g class="ring-a">
+            <circle cx="80" cy="80" r="74" fill="none" stroke="rgba(0,212,255,.2)" stroke-width=".8" stroke-dasharray="6 5"/>
+          </g>
+          <g class="ring-b">
+            <circle cx="80" cy="80" r="58" fill="none" stroke="rgba(0,212,255,.15)" stroke-width=".8" stroke-dasharray="3 7"/>
+          </g>
+          <circle cx="80" cy="6" r="2.5" fill="#00d4ff" opacity=".7"/>
+          <circle cx="80" cy="154" r="2.5" fill="#00d4ff" opacity=".7"/>
+          <circle cx="6" cy="80" r="2.5" fill="#00d4ff" opacity=".7"/>
+          <circle cx="154" cy="80" r="2.5" fill="#00d4ff" opacity=".7"/>
+          <circle cx="80" cy="80" r="42" fill="rgba(0,212,255,.04)" stroke="#00d4ff" stroke-width="1.5"/>
+          <circle cx="80" cy="80" r="32" fill="rgba(0,212,255,.06)" stroke="rgba(0,212,255,.3)" stroke-width=".5"/>
+          <path id="arc-prog" d="M80 38" fill="none" stroke="#00d4ff" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+        <div class="arc-inner">
+          <div class="arc-pct" id="arc-num">100</div>
+          <div class="arc-lbl">POTENCIA</div>
+        </div>
+      </div>
+
+      <div class="voice-section">
+        <div class="section-title" style="text-align:center">Entrada de voz</div>
+        <div class="voice-bars" id="voice-bars">
+          <div class="vb" style="height:4px"></div><div class="vb" style="height:9px"></div>
+          <div class="vb" style="height:15px"></div><div class="vb" style="height:22px"></div>
+          <div class="vb" style="height:28px"></div><div class="vb" style="height:22px"></div>
+          <div class="vb" style="height:15px"></div><div class="vb" style="height:9px"></div>
+          <div class="vb" style="height:4px"></div>
+        </div>
+        <div class="voice-label" id="voice-lbl">DI "JARVIS" PARA ACTIVAR</div>
+      </div>
+
+      <div style="width:100%">
+        <div class="section-title" style="text-align:center">Respuesta</div>
+        <div class="response-box" id="response-box">
+          Sistemas iniciados. Listo para asistir.<span class="cursor">_</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px">
+        <button class="mic-btn no-drag" id="mic-btn" onclick="jarvis.toggleMic()">&#9670; ACTIVAR MIC</button>
+        <button class="cfg-open-btn no-drag" onclick="jarvis.openConfig()">&#9881; CONFIG</button>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="panel">
+      <div>
+        <div class="section-title">Radar de red</div>
+        <div class="radar-wrap">
+          <svg class="radar-svg" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(0,212,255,.15)" stroke-width=".8"/>
+            <circle cx="40" cy="40" r="24" fill="none" stroke="rgba(0,212,255,.12)" stroke-width=".8"/>
+            <circle cx="40" cy="40" r="12" fill="none" stroke="rgba(0,212,255,.1)" stroke-width=".8"/>
+            <line x1="40" y1="4" x2="40" y2="76" stroke="rgba(0,212,255,.1)" stroke-width=".5"/>
+            <line x1="4" y1="40" x2="76" y2="40" stroke="rgba(0,212,255,.1)" stroke-width=".5"/>
+            <g class="radar-sweep">
+              <path d="M40 40 L40 4 A36 36 0 0 1 75 55 Z" fill="rgba(0,212,255,.08)"/>
+              <line x1="40" y1="40" x2="40" y2="4" stroke="rgba(0,212,255,.6)" stroke-width="1"/>
+            </g>
+            <circle class="radar-ping" cx="58" cy="28" r="2" fill="#00d4ff" opacity=".9"/>
+            <circle cx="58" cy="28" r="2" fill="#00d4ff" opacity=".6"/>
+            <circle cx="25" cy="50" r="2" fill="#00ff88" opacity=".5"/>
+          </svg>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Red neuronal</div>
+        <div class="stat-row"><span class="stat-k">MODELO</span><span class="stat-v" style="font-size:8px">CLAUDE SONNET</span></div>
+        <div class="stat-row"><span class="stat-k">TOKENS</span><span class="stat-v" id="tokens-el">0</span></div>
+        <div class="stat-row"><span class="stat-k">LATENCIA</span><span class="stat-v" id="latency-el">-- ms</span></div>
+        <div class="stat-row"><span class="stat-k">COMANDOS</span><span class="stat-v" id="cmds-el">0</span></div>
+        <div class="stat-row"><span class="stat-k">MEMORIA</span><span class="stat-v" style="color:#00ff88">SEMÁNTICA</span></div>
+        <div class="stat-row"><span class="stat-k">MODO</span><span class="stat-v" id="mode-el">TRABAJO</span></div>
+      </div>
+
+      <div>
+        <div class="section-title">Recordatorios activos</div>
+        <div class="reminders-box" id="reminders-box">
+          <div style="font-size:8px;color:rgba(0,212,255,.25);letter-spacing:1px">SIN RECORDATORIOS</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Herramientas</div>
+        <div class="mod-row"><span class="mod-name">ABRIR APPS</span><span class="mod-status s-ok">OK</span></div>
+        <div class="mod-row"><span class="mod-name">WEB SEARCH</span><span class="mod-status s-ok">OK</span></div>
+        <div class="mod-row"><span class="mod-name">RECORDATORIOS</span><span class="mod-status s-ok">OK</span></div>
+        <div class="mod-row"><span class="mod-name">VISIÓN IA</span><span class="mod-status s-ok">OK</span></div>
+        <div class="mod-row"><span class="mod-name">COMANDOS</span><span class="mod-status s-ok">OK</span></div>
+      </div>
+
+      <div class="alert-bar">
+        <span style="color:#00d4ff;font-size:14px">&#9650;</span>
+        <span class="alert-text" id="alert-el">TODOS LOS SISTEMAS NOMINALES</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div class="bottom-bar no-drag">
+    <div class="bottom-left">STARK INDUSTRIES &mdash; USO PRIVADO &mdash; ACCESO AUTORIZADO</div>
+    <div class="bottom-right">v5.0.0 &mdash; BUILD 20250526</div>
+  </div>
+</div>
+
+<script>
+var jarvis = (function(){
+  var bootTime = Date.now();
+  var cmdCount = 0;
+  var listening = false;
+  var frame = 0;
+  var realCpu = 0, realRam = 0;
+
+  var ALERTS = [
+    "TODOS LOS SISTEMAS NOMINALES",
+    "CONEXIÓN SEGURA ESTABLECIDA",
+    "PROTOCOLO DE ESCUCHA ACTIVO",
+    "MÓDULOS OPERANDO CORRECTAMENTE",
+    "RED NEURONAL ESTABLE",
+    "MEMORIA SEMÁNTICA SINCRONIZADA",
+    "VISIÓN COMPUTACIONAL EN STANDBY",
+  ];
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  /* ── BOOT ── */
+  var BOOT_STEPS = [
+    "Núcleo J.A.R.V.I.S...",
+    "Protocolo de voz...",
+    "Claude API...",
+    "Memoria semántica...",
+    "Monitor del sistema...",
+    "Sistema de recordatorios...",
+    "Módulo de visión IA...",
+    "Todos los sistemas nominales.",
+  ];
+
+  function runBoot(){
+    var stepsEl = document.getElementById('boot-steps');
+    var barEl = document.getElementById('boot-bar');
+    var pctEl = document.getElementById('boot-pct');
+    BOOT_STEPS.forEach(function(s){
+      var d = document.createElement('div');
+      d.className = 'boot-step';
+      d.textContent = '▸ ' + s;
+      stepsEl.appendChild(d);
+    });
+
+    var i = 0;
+    var steps = stepsEl.querySelectorAll('.boot-step');
+    function next(){
+      if(i > 0) steps[i-1].className = 'boot-step done';
+      if(i < steps.length){
+        steps[i].className = 'boot-step active';
+        var pct = Math.round(((i+1)/steps.length)*100);
+        barEl.style.transition = 'width .4s ease';
+        barEl.style.width = pct + '%';
+        pctEl.textContent = pct + '%';
+        i++;
+        setTimeout(next, 380);
+      } else {
+        // boot completo
+        setTimeout(function(){
+          document.getElementById('boot-screen').style.transition = 'opacity .6s';
+          document.getElementById('boot-screen').style.opacity = '0';
+          setTimeout(function(){
+            document.getElementById('boot-screen').style.display = 'none';
+            document.getElementById('hud').classList.add('visible');
+          }, 600);
+        }, 300);
+      }
+    }
+    setTimeout(next, 400);
+  }
+
+  /* ── RELOJ ── */
+  function tick(){
+    var now = new Date();
+    var dias = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
+    var meses = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+    document.getElementById('clock-el').textContent =
+      pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    document.getElementById('date-el').textContent =
+      dias[now.getDay()]+' '+pad(now.getDate())+' '+meses[now.getMonth()]+' '+now.getFullYear();
+    var elapsed = Math.floor((Date.now()-bootTime)/1000);
+    var h=Math.floor(elapsed/3600),m=Math.floor((elapsed%3600)/60),s=elapsed%60;
+    document.getElementById('uptime-el').textContent = 'UPTIME: '+pad(h)+':'+pad(m)+':'+pad(s);
+
+    // Modo según hora
+    var hr = now.getHours();
+    var mode = hr >= 22 || hr < 7 ? 'NOCTURNO' : hr >= 9 && hr <= 18 ? 'TRABAJO' : 'RELAX';
+    document.getElementById('mode-el').textContent = mode;
+  }
+
+  /* ── BARS ── */
+  function setBar(barId, valId, pct, suffix){
+    var bar = document.getElementById(barId);
+    if(!bar) return;
+    bar.style.width = Math.min(100, pct) + '%';
+    bar.className = 'bar-fill' + (pct>85?' crit':pct>65?' warn':'');
+    if(valId) document.getElementById(valId).textContent = pct + (suffix||'%');
+  }
+
+  function updateArc(pct){
+    var r=42, cx=80, cy=80;
+    if(pct>=100){
+      document.getElementById('arc-prog').setAttribute('d','M80 38 A42 42 0 1 1 79.99 38');
+    } else {
+      var angle = (pct/100)*360 - 90;
+      var rad = angle * Math.PI/180;
+      var ex=cx+r*Math.cos(rad), ey=cy+r*Math.sin(rad);
+      var large = pct>50?1:0;
+      document.getElementById('arc-prog').setAttribute('d',
+        'M'+cx+' '+(cy-r)+' A'+r+' '+r+' 0 '+large+' 1 '+ex.toFixed(2)+' '+ey.toFixed(2));
+    }
+    document.getElementById('arc-num').textContent = pct;
+  }
+
+  function animateVoice(){
+    document.querySelectorAll('.vb').forEach(function(b){
+      var h = listening ? Math.round(5+Math.random()*23) : Math.round(1+Math.random()*3);
+      b.style.height = h+'px';
+      b.style.opacity = listening ? '0.9' : '0.25';
+    });
+  }
+
+  /* ── LOG ── */
+  function addLog(type, msg){
+    var box = document.getElementById('log-box');
+    var now = new Date();
+    var ts = pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    var div = document.createElement('div');
+    div.className = 'log-line log-'+type;
+    div.innerHTML = '<span class="log-ts">['+ts+']</span><span class="log-msg">'+msg+'</span>';
+    box.appendChild(div);
+    while(box.children.length > 7) box.removeChild(box.firstChild);
+  }
+
+  /* ── RESPUESTA ── */
+  function setResponse(text){
+    document.getElementById('response-box').innerHTML = text+'<span class="cursor">_</span>';
+  }
+
+  /* ── LISTENING ── */
+  function setListening(active){
+    listening = active;
+    var btn = document.getElementById('mic-btn');
+    var lbl = document.getElementById('voice-lbl');
+    if(active){
+      btn.classList.add('active');
+      btn.textContent = '◈ ESCUCHANDO...';
+      lbl.textContent = 'ESCUCHANDO...';
+      lbl.style.color = '#00ff88';
+    } else {
+      btn.classList.remove('active');
+      btn.textContent = '◆ ACTIVAR MIC';
+      lbl.textContent = 'DI "JARVIS" PARA ACTIVAR';
+      lbl.style.color = '';
+    }
+  }
+
+  /* ── MÉTRICAS desde Python ── */
+  function updateMetrics(cpu, ram, tokens, latency){
+    realCpu = cpu; realRam = ram;
+    setBar('cpu-bar','cpu-val', cpu,'');
+    setBar('ram-bar','ram-val', ram,'');
+    if(tokens !== undefined) document.getElementById('tokens-el').textContent = tokens;
+    if(latency !== undefined) document.getElementById('latency-el').textContent = latency+' ms';
+  }
+
+  /* Métricas completas desde SysMonitor */
+  function updateMetricsFull(cpu, ram, disk, tx, rx, temp, gpuLoad, gpuTemp){
+    realCpu = cpu; realRam = ram;
+    setBar('cpu-bar','cpu-val', cpu,'');
+    setBar('ram-bar','ram-val', ram,'');
+    setBar('disk-bar','disk-val', disk,'');
+    var txPct = Math.min(100, tx * 5);
+    setBar('net-bar','net-val', 0, '');
+    document.getElementById('net-val').textContent = tx.toFixed(2) + ' MB/s';
+    document.getElementById('net-bar').style.width = txPct + '%';
+    if(temp !== null && temp !== undefined){
+      var tempPct = Math.min(100, (temp / 100) * 100);
+      setBar('temp-bar','temp-val', 0, '');
+      document.getElementById('temp-val').textContent = temp.toFixed(0) + '°C';
+      document.getElementById('temp-bar').style.width = tempPct + '%';
+      document.getElementById('temp-bar').className = 'bar-fill' + (temp>85?' crit':temp>70?' warn':'');
+    }
+
+    // Telemetría de GPU
+    var gpuRowLoad = document.getElementById('gpu-row');
+    var gpuRowTemp = document.getElementById('gpu-temp-row');
+    
+    if(gpuLoad !== null && gpuLoad !== undefined){
+      if(gpuRowLoad) gpuRowLoad.style.display = '';
+      setBar('gpu-bar','gpu-val', gpuLoad,'');
+    } else {
+      if(gpuRowLoad) gpuRowLoad.style.display = 'none';
+    }
+    
+    if(gpuTemp !== null && gpuTemp !== undefined){
+      if(gpuRowTemp) gpuRowTemp.style.display = '';
+      var gpuTempPct = Math.min(100, (gpuTemp / 100) * 100);
+      setBar('gpu-temp-bar','gpu-temp-val', 0, '');
+      document.getElementById('gpu-temp-val').textContent = gpuTemp.toFixed(0) + '°C';
+      document.getElementById('gpu-temp-bar').style.width = gpuTempPct + '%';
+      document.getElementById('gpu-temp-bar').className = 'bar-fill' + (gpuTemp>80?' crit':gpuTemp>65?' warn':'');
+    } else {
+      if(gpuRowTemp) gpuRowTemp.style.display = 'none';
+    }
+  }
+
+  /* ── RECORDATORIOS ── */
+  function showReminder(text){
+    var toast = document.getElementById('reminder-toast');
+    toast.textContent = '⏰ ' + text;
+    toast.style.display = 'block';
+    setTimeout(function(){ toast.style.display = 'none'; }, 8000);
+    addLog('warn', '⏰ ' + text);
+  }
+
+  function updateReminders(jsonStr){
+    try {
+      var rems = JSON.parse(jsonStr);
+      var box = document.getElementById('reminders-box');
+      box.innerHTML = '';
+      if(!rems.length){
+        box.innerHTML = '<div style="font-size:8px;color:rgba(0,212,255,.25);letter-spacing:1px">SIN RECORDATORIOS</div>';
+        return;
+      }
+      rems.forEach(function(r){
+        var min = Math.floor(r.remaining_seconds / 60);
+        var sec = r.remaining_seconds % 60;
+        var div = document.createElement('div');
+        div.className = 'rem-item';
+        div.innerHTML = '<span>#'+r.id+' '+r.text.substring(0,22)+'</span><span class="rem-time">'+pad(min)+':'+pad(sec)+'</span>';
+        box.appendChild(div);
+      });
+    } catch(e){}
+  }
+
+  /* ── CONFIG ── */
+  function openConfig(){
+    document.getElementById('config-panel').classList.add('open');
+    if(window.pywebview && pywebview.api){
+      pywebview.api.get_settings().then(function(s){
+        try {
+          var cfg = JSON.parse(s);
+          if(cfg.tts_engine) document.getElementById('cfg-tts-engine').value = cfg.tts_engine;
+          if(cfg.tts_rate){ document.getElementById('cfg-rate').value = cfg.tts_rate; document.getElementById('cfg-rate-val').textContent = cfg.tts_rate; }
+          if(cfg.tts_volume){ var v = Math.round(cfg.tts_volume*100); document.getElementById('cfg-vol').value = v; document.getElementById('cfg-vol-val').textContent = v+'%'; }
+          if(cfg.whisper_model) document.getElementById('cfg-whisper').value = cfg.whisper_model;
+          if(cfg.llm_provider){
+            document.getElementById('cfg-llm-provider').value = cfg.llm_provider;
+            updateLlmProviderFields(cfg.llm_provider);
+          }
+          if(cfg.api_key) document.getElementById('cfg-apikey').value = cfg.api_key;
+          if(cfg.gemini_api_key) document.getElementById('cfg-gemini-apikey').value = cfg.gemini_api_key;
+          if(cfg.ollama_model) document.getElementById('cfg-ollama-model').value = cfg.ollama_model;
+        } catch(e){}
+      });
+    }
+  }
+
+  function closeConfig(){
+    document.getElementById('config-panel').classList.remove('open');
+  }
+
+  function updateLlmProviderFields(provider){
+    document.getElementById('cfg-apikey-row').style.display = provider === 'anthropic' ? 'flex' : 'none';
+    document.getElementById('cfg-gemini-apikey-row').style.display = provider === 'gemini' ? 'flex' : 'none';
+    document.getElementById('cfg-ollama-model-row').style.display = provider === 'ollama' ? 'flex' : 'none';
+  }
+
+  function saveSettings(){
+    var settings = {
+      tts_engine: document.getElementById('cfg-tts-engine').value,
+      tts_rate: parseInt(document.getElementById('cfg-rate').value),
+      tts_volume: parseInt(document.getElementById('cfg-vol').value) / 100,
+      whisper_model: document.getElementById('cfg-whisper').value,
+      llm_provider: document.getElementById('cfg-llm-provider').value,
+      ollama_model: document.getElementById('cfg-ollama-model').value || 'llama3',
+    };
+    var key = document.getElementById('cfg-apikey').value;
+    if(key) settings.api_key = key;
+    
+    var geminiKey = document.getElementById('cfg-gemini-apikey').value;
+    if(geminiKey) settings.gemini_api_key = geminiKey;
+
+    if(window.pywebview && pywebview.api){
+      pywebview.api.save_settings(JSON.stringify(settings)).then(function(r){
+        addLog('ok','Settings guardados');
+        closeConfig();
+      });
+    } else {
+      addLog('ok','Settings (demo)');
+      closeConfig();
+    }
+  }
+
+  function clearMemory(){
+    if(confirm('¿Borrar toda la memoria de Jarvis?')){
+      addLog('warn','Memoria borrada');
+      closeConfig();
+    }
+  }
+
+  function toggleMic(){
+    if(window.pywebview && pywebview.api){
+      pywebview.api.mic_clicked();
+    } else {
+      setListening(!listening);
+      if(listening){
+        addLog('active','Micrófono activado manualmente');
+        cmdCount++;
+        document.getElementById('cmds-el').textContent = cmdCount;
+      }
+    }
+  }
+
+  /* ── LOOP PRINCIPAL ── */
+  function loop(){
+    tick();
+    animateVoice();
+    var pct = Math.round(88 + Math.sin(frame/25)*8);
+    updateArc(pct);
+    if(frame > 0 && frame % 150 === 0){
+      var a = ALERTS[Math.floor(Math.random()*ALERTS.length)];
+      document.getElementById('alert-el').textContent = a;
+    }
+    frame++;
+    setTimeout(loop, 180);
+  }
+
+  /* ── INIT ── */
+  runBoot();
+  loop();
+
+  setTimeout(function(){
+    if(window.pywebview && pywebview.api){ pywebview.api.ready(); }
+  }, 500);
+
+  return {
+    setResponse, setListening, addLog, updateMetrics,
+    updateMetricsFull, toggleMic, openConfig, closeConfig,
+    saveSettings, clearMemory, showReminder, updateReminders,
+    updateLlmProviderFields
+  };
+})();
+</script>
+</body>
+</html>
