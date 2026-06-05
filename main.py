@@ -36,14 +36,10 @@ async def boot_sequence(hud: JarvisHUD, speaker: Speaker):
     await speaker.speak("J.A.R.V.I.S en línea. A su disposición, señor.")
 
 
-async def main():
-    print("=" * 55)
-    print("  J.A.R.V.I.S — Iniciando...")
-    print("=" * 55)
-
-    # HUD
-    hud = JarvisHUD()
-    hud.launch()
+async def async_main(hud: JarvisHUD):
+    # Esperar a que la UI esté lista
+    hud._ready.wait(timeout=6)
+    await asyncio.sleep(0.3)
 
     # Módulos
     speaker = Speaker()
@@ -105,5 +101,31 @@ async def main():
             await asyncio.sleep(1)
 
 
+def start_jarvis_backend(hud: JarvisHUD):
+    import threading
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(async_main(hud))
+        
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
+def main():
+    print("=" * 55)
+    print("  J.A.R.V.I.S — Iniciando...")
+    print("=" * 55)
+
+    # HUD
+    hud = JarvisHUD()
+    
+    # Iniciar backend en un hilo separado
+    start_jarvis_backend(hud)
+    
+    # Lanzar la UI en el hilo principal (esto bloquea el proceso)
+    hud.launch()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

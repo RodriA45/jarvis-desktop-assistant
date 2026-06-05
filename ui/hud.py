@@ -58,30 +58,24 @@ class JarvisHUD:
 
         api = HudAPI(self)
 
-        def _run():
-            from config import HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_ALWAYS_ON_TOP
-            self._window = webview.create_window(
-                title="J.A.R.V.I.S",
-                url=f"file:///{HUD_HTML.replace(os.sep, '/')}",
-                width=HUD_WIDTH, height=HUD_HEIGHT,
-                resizable=True, frameless=HUD_FRAMELESS,
-                on_top=HUD_ALWAYS_ON_TOP,
-                background_color="#000000",
-                js_api=api, min_size=(800, 500),
-            )
+        from config import HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_ALWAYS_ON_TOP
+        self._window = webview.create_window(
+            title="J.A.R.V.I.S",
+            url=f"file:///{HUD_HTML.replace(os.sep, '/')}",
+            width=HUD_WIDTH, height=HUD_HEIGHT,
+            resizable=True, frameless=HUD_FRAMELESS,
+            on_top=HUD_ALWAYS_ON_TOP,
+            background_color="#000000",
+            js_api=api, min_size=(800, 500),
+        )
+        
+        def _on_closed():
+            print("[HUD] Ventana cerrada. Apagando J.A.R.V.I.S...")
+            import os
+            os._exit(0)
             
-            def _on_closed():
-                print("[HUD] Ventana cerrada. Apagando J.A.R.V.I.S...")
-                import os
-                os._exit(0)
-                
-            self._window.events.closed += _on_closed
-            webview.start(debug=False)
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-        self._ready.wait(timeout=6)
-        time.sleep(0.3)
+        self._window.events.closed += _on_closed
+        webview.start(debug=False)
 
     def _js(self, code: str):
         if self._window:
