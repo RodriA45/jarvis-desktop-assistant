@@ -50,6 +50,8 @@ async def async_main(hud: JarvisHUD):
 
     # Conectar el clic del micrófono en la interfaz HUD con el disparador
     hud.on_mic_click = lambda: listener.trigger_mic()
+    hud.on_stop_speaking = lambda: speaker.stop()
+    hud.on_toggle_mute_mic = lambda: listener.toggle_mute()
 
     # Registrar atajo de teclado global Ctrl + Alt + J
     try:

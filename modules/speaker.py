@@ -80,6 +80,29 @@ class Speaker:
             print(f"[SPEAKER] pyttsx3 no disponible: {e}. Usando print.")
             self._mode = "print"
 
+    def stop(self):
+        """Para la reproducción de voz inmediatamente y vacía la cola."""
+        import queue
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+                self._queue.task_done()
+            except Exception:
+                break
+        
+        if self._mode == "pyttsx3" and self._engine:
+            try:
+                self._engine.stop()
+            except Exception as e:
+                print(f"[SPEAKER] Error deteniendo motor pyttsx3: {e}")
+        elif self._mode == "elevenlabs":
+            try:
+                import sounddevice as sd
+                sd.stop()
+            except Exception:
+                pass
+        print("[SPEAKER] Reproducción de voz detenida por el usuario.")
+
     def speak_now(self, text: str):
         clean = _clean_text(text)
         if not clean:

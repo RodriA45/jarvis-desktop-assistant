@@ -40,6 +40,7 @@ from config import (PICOVOICE_API_KEY, WAKE_WORD_MODEL, WAKE_WORD_FALLBACK,
 class Listener:
     def __init__(self, hud=None):
         self.hud = hud
+        self.muted = False
         self._whisper_model = None
         self._porcupine = None
         self._use_whisper = WHISPER_AVAILABLE and SOUNDDEVICE_AVAILABLE
@@ -58,6 +59,11 @@ class Listener:
         """Dispara el micrófono de forma segura desde otro hilo (como la GUI)."""
         print("[LISTENER] Disparador de micrófono desde HUD activado.")
         self.loop.call_soon_threadsafe(self.mic_trigger_event.set)
+
+    def toggle_mute(self) -> bool:
+        self.muted = not self.muted
+        print(f"[LISTENER] Micrófono silenciado: {self.muted}")
+        return self.muted
 
     def _detect_wake_mode(self):
         if (PORCUPINE_AVAILABLE
@@ -81,6 +87,10 @@ class Listener:
 
     async def wait_for_wake_word(self):
         self.mic_trigger_event.clear()
+        
+        # Si el micrófono está silenciado, esperar a que se desactive el silencio
+        while self.muted:
+            await asyncio.sleep(0.5)
         
         async def detect_wake():
             if self._wake_mode == "porcupine":

@@ -54,3 +54,5 @@ memory/context.json
 # Exceptuar archivos estáticos o carpetas de configuración esenciales si existen
 !wake_word/*.ppn
 !.gitkeep
+!ui/jarvis.png
+!ui/jarvis.ico

@@ -44,13 +44,30 @@ class HudAPI:
         """Devuelve los ajustes actuales."""
         return json.dumps(self._bridge._current_settings())
 
+    def toggle_mute_mic(self) -> bool:
+        return self._bridge.toggle_mute_mic()
+
+    def stop_speaking(self):
+        self._bridge.stop_speaking()
+
 
 class JarvisHUD:
     def __init__(self):
         self._window = None
         self._ready = threading.Event()
         self.on_mic_click = None
+        self.on_toggle_mute_mic = None
+        self.on_stop_speaking = None
         self._settings_callbacks = []
+
+    def toggle_mute_mic(self) -> bool:
+        if self.on_toggle_mute_mic:
+            return self.on_toggle_mute_mic()
+        return False
+
+    def stop_speaking(self):
+        if self.on_stop_speaking:
+            self.on_stop_speaking()
 
     def launch(self):
         if not WEBVIEW_OK:
@@ -79,7 +96,38 @@ class JarvisHUD:
             self.shutdown()
             
         self._window.events.closed += _on_closed
-        webview.start(debug=False)
+
+        def _on_shown():
+            # Intentar cambiar el icono nativo de la ventana en Windows
+            try:
+                import platform
+                if platform.system() == "Windows" and self._window and hasattr(self._window, "native"):
+                    import clr
+                    clr.AddReference('System.Windows.Forms')
+                    clr.AddReference('System.Drawing')
+                    import System.Drawing
+                    icon_path = os.path.join(os.path.dirname(HUD_HTML), "jarvis.ico")
+                    if os.path.exists(icon_path):
+                        native_window = self._window.native
+                        try:
+                            # Intentar método para WinForms (System.Drawing.Icon)
+                            native_window.Icon = System.Drawing.Icon(icon_path)
+                            print("[HUD] Icono de Jarvis asignado correctamente (WinForms).")
+                        except Exception:
+                            # Intentar método para WPF (BitmapFrame)
+                            try:
+                                clr.AddReference('PresentationCore')
+                                clr.AddReference('WindowsBase')
+                                from System.Windows.Media.Imaging import BitmapFrame
+                                from System import Uri
+                                native_window.Icon = BitmapFrame.Create(Uri(icon_path))
+                                print("[HUD] Icono de Jarvis asignado correctamente (WPF).")
+                            except Exception as e2:
+                                print(f"[HUD] No se pudo cambiar el icono en WPF: {e2}")
+            except Exception:
+                pass
+
+        webview.start(_on_shown, debug=False)
 
     def _js(self, code: str):
         if self._window:

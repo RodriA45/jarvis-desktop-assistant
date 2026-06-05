@@ -434,8 +434,10 @@ body{background:#000;color:#00d4ff;font-family:'Outfit', sans-serif;overflow:hid
         </div>
       </div>
 
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
         <button class="mic-btn no-drag" id="mic-btn" onclick="jarvis.toggleMic()">&#9670; ACTIVAR MIC</button>
+        <button class="cfg-open-btn no-drag" id="mute-mic-btn" onclick="jarvis.toggleMuteMic()">🎤 SILENCIAR MIC</button>
+        <button class="cfg-open-btn no-drag" id="stop-voice-btn" onclick="jarvis.stopSpeaking()" style="border-color:rgba(255,170,0,.45);color:#ffaa00;display:none">&#9632; PARAR VOZ</button>
         <button class="cfg-open-btn no-drag" onclick="jarvis.openConfig()">&#9881; CONFIG</button>
         <button class="cfg-open-btn no-drag" onclick="jarvis.shutdown()" style="border-color:rgba(255,68,68,.45);color:#ff5555">&#x23FB; APAGAR</button>
       </div>
@@ -944,11 +946,68 @@ var jarvis = (function(){
   function setSpeaking(active){
     speaking = active;
     var lbl = document.getElementById('voice-lbl');
+    var stopBtn = document.getElementById('stop-voice-btn');
     if(active){
       lbl.textContent = 'JARVIS HABLANDO...';
       lbl.style.color = '#00d4ff';
+      if(stopBtn) stopBtn.style.display = 'inline-block';
     } else {
+      if(stopBtn) stopBtn.style.display = 'none';
       if(!listening){
+        if(lbl) {
+          if (micMuted) {
+            lbl.textContent = 'MICRÓFONO DESACTIVADO (MUTED)';
+            lbl.style.color = '#ff5555';
+          } else {
+            lbl.textContent = 'DI "JARVIS" PARA ACTIVAR';
+            lbl.style.color = '';
+          }
+        }
+      }
+    }
+  }
+
+  function stopSpeaking(){
+    if(window.pywebview && pywebview.api){
+      pywebview.api.stop_speaking();
+    }
+    setSpeaking(false);
+  }
+
+  var micMuted = false;
+  function toggleMuteMic(){
+    if(window.pywebview && pywebview.api){
+      pywebview.api.toggle_mute_mic().then(function(muted){
+        setMicMuted(muted);
+      });
+    } else {
+      setMicMuted(!micMuted);
+    }
+  }
+
+  function setMicMuted(muted){
+    micMuted = muted;
+    var btn = document.getElementById('mute-mic-btn');
+    var lbl = document.getElementById('voice-lbl');
+    if(muted){
+      if(btn) {
+        btn.style.borderColor = 'rgba(255,85,85,.45)';
+        btn.style.color = '#ff5555';
+        btn.innerHTML = '🎤 MIC MUTED';
+      }
+      addLog('warn', 'Micrófono silenciado');
+      if(lbl && !speaking && !listening) {
+        lbl.textContent = 'MICRÓFONO DESACTIVADO (MUTED)';
+        lbl.style.color = '#ff5555';
+      }
+    } else {
+      if(btn) {
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.innerHTML = '🎤 SILENCIAR MIC';
+      }
+      addLog('ok', 'Micrófono activado');
+      if(lbl && !speaking && !listening) {
         lbl.textContent = 'DI "JARVIS" PARA ACTIVAR';
         lbl.style.color = '';
       }
@@ -1048,7 +1107,7 @@ var jarvis = (function(){
     updateMetricsFull, toggleMic, openConfig, closeConfig,
     saveSettings, clearMemory, showReminder, updateReminders,
     updateLlmProviderFields, shutdown, onPresetChange, onFullscreenToggle,
-    setSpeaking, attachSciFiSounds
+    setSpeaking, attachSciFiSounds, stopSpeaking, toggleMuteMic, setMicMuted
   };
 })();
 </script>
