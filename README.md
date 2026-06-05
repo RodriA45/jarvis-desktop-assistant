@@ -26,6 +26,10 @@ El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su pa
 | **🖼️ Visión Computacional** | Captura y analiza tu pantalla principal con inteligencia visual para responder dudas del contenido activo. |
 | **🎵 Control de Ventanas y Medios** | Simula atajos físicos de Windows para acoplar ventanas, minimizar todo, y controlar reproductores (ej. Spotify). |
 | **🧠 Memoria Semántica** | Base de datos SQLite local con embeddings deterministas para recordar contextos de charlas anteriores. |
+| **🎛️ Preajustes de Pantalla** | Selector rápido de dimensiones de ventana (Chica, Mediana, Grande), pantalla completa o escala personalizada en caliente. |
+| **🎹 Atajo de Teclado Global** | Activa el micrófono instantáneamente desde cualquier aplicación de Windows usando el atajo `Ctrl + Alt + J`. |
+| **🔊 Efectos y Barras de Voz** | Efectos de sonido de ciencia ficción (sintetizados por Web Audio) y barras animadas que pulsan en tiempo real al hablar o escuchar. |
+| **🏠 Asistente Offline Clima/Hora** | Modo offline inteligente con consultas de hora, fecha y clima (integrado con DuckDuckGo gratuito) sin usar API Keys. |
 | **🔒 Filtro de Seguridad** | Protege tu terminal de comandos destructivos pidiendo confirmación de voz y texto antes de ejecutar acciones críticas. |
 
 ---

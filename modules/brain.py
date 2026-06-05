@@ -297,15 +297,36 @@ class Brain:
     async def process(self, user_input: str) -> str:
         start = time.time()
 
+        # Limpiar wake word del inicio si está presente para no confundir al LLM/intents
+        import re
+        clean_input = user_input.strip()
+        clean_lower = clean_input.lower()
+        # Remueve signos de puntuación iniciales
+        clean_lower = re.sub(r'^[¿?¡!\s,.-]+', '', clean_lower)
+        for pattern in ["ey jarvis", "oye jarvis", "hola jarvis", "jarvis"]:
+            if clean_lower.startswith(pattern):
+                # Extraer la parte después del patrón en el original
+                start_idx = clean_input.lower().index(pattern) + len(pattern)
+                clean_input = clean_input[start_idx:].strip()
+                # Quitar puntuación inicial de nuevo
+                clean_input = re.sub(r'^[¿?¡!\s,.-]+', '', clean_input)
+                break
+        
+        if not clean_input.strip():
+            clean_input = user_input  # si quedó vacío, conservar original
+            
+        # Usamos el input limpio a partir de ahora
+        user_input_cleaned = clean_input
+
         # contexto semántico
-        semantic_ctx = self.memory.get_context_for(user_input)
+        semantic_ctx = self.memory.get_context_for(user_input_cleaned)
         prefs = self.memory.get_preferences()
         user_name = prefs.get("nombre_usuario", "señor")
 
         # detectar recordatorios en lenguaje natural
-        if any(kw in user_input.lower() for kw in
+        if any(kw in user_input_cleaned.lower() for kw in
                ["recordame", "avisame", "recordatorio", "alarma", "cada hora"]):
-            parsed = parse_reminder_from_text(user_input)
+            parsed = parse_reminder_from_text(user_input_cleaned)
             if parsed:
                 rid = self.reminders.add(
                     text=parsed["text"],
@@ -323,7 +344,7 @@ class Brain:
             history = [{"role": "user", "content": f"[Contexto previo relevante]\n{semantic_ctx}"},
                        {"role": "assistant", "content": "Entendido, tengo ese contexto en cuenta."}] + history
 
-        history.append({"role": "user", "content": user_input})
+        history.append({"role": "user", "content": user_input_cleaned})
 
         persona = _get_persona()
         full_system = persona + "\n\n" + JARVIS_PERSONA
@@ -395,7 +416,7 @@ class Brain:
         user_msg = ""
         for h in reversed(history):
             if h["role"] == "user" and isinstance(h["content"], str):
-                user_msg = h["content"].lower()
+                user_msg = h["content"].lower().strip()
                 break
 
         class Block:
@@ -412,10 +433,17 @@ class Brain:
         # Verificar si es la segunda vuelta (después de ejecutar herramienta)
         last_item = history[-1]
         if last_item["role"] == "user" and isinstance(last_item["content"], list):
-            # Es el resultado de la herramienta, devolvemos confirmación
+            # Es el resultado de la herramienta, devolvemos confirmación o resumen
             tool_res = last_item["content"][0].get("content", "")
             clean_res = str(tool_res).replace("\n", " ").strip()
-            return OfflineResponse([Block("text", text=f"Acción completada. Resultado: {clean_res}")], "end_turn")
+            # Si viene de una búsqueda web, formatearlo de forma más natural
+            if "duckduckgo-search no instalado" in clean_res.lower() or "error en búsqueda" in clean_res.lower():
+                return OfflineResponse([Block("text", text=f"Señor, no pude completar la búsqueda web. {clean_res}")], "end_turn")
+            
+            # Cortar resultados si son muy largos
+            if len(clean_res) > 300:
+                clean_res = clean_res[:297] + "..."
+            return OfflineResponse([Block("text", text=f"He buscado en internet, señor. Aquí tiene el resultado: {clean_res}")], "end_turn")
 
         # Reglas NLP básicas para modo demostración
         # 1. Aplicaciones
@@ -471,7 +499,38 @@ class Brain:
         # 6. Telemetría / Sistema
         elif "sistema" in user_msg or "recursos" in user_msg or "cpu" in user_msg or "ram" in user_msg or "gpu" in user_msg or "disco" in user_msg:
             return OfflineResponse([Block("tool_use", id="sys_info_cmd", name="get_system_info", input={"info_type": "all"})], "tool_use")
-        # 7. Respuestas generales
+        # 7. Clima y búsqueda de información general offline (DuckDuckGo integration)
+        elif any(w in user_msg for w in ["clima", "tiempo", "temperatura", "dia hoy", "día hoy"]):
+            # Buscar el clima de hoy por DuckDuckGo
+            return OfflineResponse([Block("tool_use", id="web_search_clima", name="web_search", input={"query": "clima de hoy"})], "tool_use")
+        elif any(w in user_msg for w in ["busca", "buscar", "quien es", "qué es", "que es"]):
+            query = user_msg
+            for verb in ["busca", "buscar", "quien es", "qué es", "que es"]:
+                if query.startswith(verb):
+                    query = query[len(verb):].strip()
+            return OfflineResponse([Block("tool_use", id="web_search_general", name="web_search", input={"query": query})], "tool_use")
+        # 8. Hora y Fecha offline
+        elif "hora" in user_msg:
+            import datetime
+            now_time = datetime.datetime.now().strftime("%H:%M")
+            return OfflineResponse([Block("text", text=f"Son las {now_time}, señor.")], "end_turn")
+        elif any(w in user_msg for w in ["fecha", "día de hoy", "dia de hoy", "que dia es", "qué día es", "dia es"]):
+            import datetime
+            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            now = datetime.datetime.now()
+            dia_semana = dias[now.weekday()]
+            mes = meses[now.month - 1]
+            fecha_str = f"Hoy es {dia_semana} {now.day} de {mes} de {now.year}."
+            return OfflineResponse([Block("text", text=fecha_str)], "end_turn")
+        # 9. Apagado offline por voz
+        elif any(w in user_msg for w in ["apagar jarvis", "cerrar jarvis", "cerrate", "apagate"]):
+            if self.hud:
+                self.hud.add_log("warn", "Apagando por comando de voz...")
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(self.hud.shutdown)
+            return OfflineResponse([Block("text", text="Entendido, cerrando sistemas de inmediato. Hasta luego, señor.")], "end_turn")
+        # 10. Respuestas generales
         else:
             respuestas = {
                 "hola": "Hola señor, estoy operando en modo demostración offline. ¿En qué puedo ayudarlo?",

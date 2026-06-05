@@ -27,6 +27,10 @@ class HudAPI:
     def ready(self):
         self._bridge._ready.set()
 
+    def shutdown(self):
+        """Mata todos los procesos y apaga Jarvis."""
+        self._bridge.shutdown()
+
     def save_settings(self, settings_json: str):
         """Guarda ajustes desde el panel de config."""
         try:
@@ -58,7 +62,7 @@ class JarvisHUD:
 
         api = HudAPI(self)
 
-        from config import HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_ALWAYS_ON_TOP
+        from config import HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_ALWAYS_ON_TOP, HUD_FULLSCREEN
         self._window = webview.create_window(
             title="J.A.R.V.I.S",
             url=f"file:///{HUD_HTML.replace(os.sep, '/')}",
@@ -67,12 +71,12 @@ class JarvisHUD:
             on_top=HUD_ALWAYS_ON_TOP,
             background_color="#000000",
             js_api=api, min_size=(800, 500),
+            fullscreen=HUD_FULLSCREEN
         )
         
         def _on_closed():
             print("[HUD] Ventana cerrada. Apagando J.A.R.V.I.S...")
-            import os
-            os._exit(0)
+            self.shutdown()
             
         self._window.events.closed += _on_closed
         webview.start(debug=False)
@@ -125,20 +129,51 @@ class JarvisHUD:
         safe = data.replace("'", "\\'")
         self._js(f"window.jarvis && jarvis.updateReminders('{safe}')")
 
-    # ── Settings ───────────────────────────────────────────────────────────
+    # ── Settings & Control ───────────────────────────────────────────────────
+
+    def shutdown(self):
+        """Matar procesos asociados y terminar el programa."""
+        print("[HUD] Apagando J.A.R.V.I.S y cerrando procesos en segundo plano...")
+        import os
+        try:
+            os.system("taskkill /f /im ollama.exe >nul 2>&1")
+        except Exception:
+            pass
+        os._exit(0)
 
     def _current_settings(self) -> dict:
         try:
-            from config import ANTHROPIC_API_KEY, GEMINI_API_KEY, TTS_ENGINE, TTS_RATE, TTS_VOLUME, WHISPER_MODEL, LLM_PROVIDER, OLLAMA_MODEL
+            from config import (ANTHROPIC_API_KEY, GEMINI_API_KEY, TTS_ENGINE, TTS_RATE, TTS_VOLUME,
+                                WHISPER_MODEL, LLM_PROVIDER, OLLAMA_MODEL, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, TTS_VOICE_ID,
+                                HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_FULLSCREEN)
+            
+            # Obtener voces locales disponibles
+            voices = []
+            try:
+                import pyttsx3
+                engine = pyttsx3.init()
+                for v in engine.getProperty("voices"):
+                    voices.append({"id": v.id, "name": v.name})
+            except Exception:
+                pass
+
             return {
                 "tts_engine": TTS_ENGINE,
                 "tts_rate": TTS_RATE,
                 "tts_volume": TTS_VOLUME,
+                "tts_voice_id": TTS_VOICE_ID,
                 "whisper_model": WHISPER_MODEL,
                 "api_key": ANTHROPIC_API_KEY if ANTHROPIC_API_KEY != "TU_API_KEY_AQUI" else "",
                 "gemini_api_key": GEMINI_API_KEY,
                 "llm_provider": LLM_PROVIDER,
                 "ollama_model": OLLAMA_MODEL,
+                "elevenlabs_api_key": ELEVENLABS_API_KEY,
+                "elevenlabs_voice_id": ELEVENLABS_VOICE_ID,
+                "hud_width": HUD_WIDTH,
+                "hud_height": HUD_HEIGHT,
+                "hud_frameless": HUD_FRAMELESS,
+                "hud_fullscreen": HUD_FULLSCREEN,
+                "available_voices": voices
             }
         except Exception:
             return {}
@@ -152,6 +187,8 @@ class JarvisHUD:
             config.TTS_VOLUME = float(settings["tts_volume"])
         if "tts_engine" in settings:
             config.TTS_ENGINE = settings["tts_engine"]
+        if "tts_voice_id" in settings:
+            config.TTS_VOICE_ID = settings["tts_voice_id"]
         if "whisper_model" in settings:
             config.WHISPER_MODEL = settings["whisper_model"]
         if "api_key" in settings:
@@ -162,6 +199,44 @@ class JarvisHUD:
             config.LLM_PROVIDER = settings["llm_provider"]
         if "ollama_model" in settings:
             config.OLLAMA_MODEL = settings["ollama_model"]
+        if "elevenlabs_api_key" in settings:
+            config.ELEVENLABS_API_KEY = settings["elevenlabs_api_key"]
+        if "elevenlabs_voice_id" in settings:
+            config.ELEVENLABS_VOICE_ID = settings["elevenlabs_voice_id"]
+        if "hud_width" in settings:
+            config.HUD_WIDTH = int(settings["hud_width"])
+        if "hud_height" in settings:
+            config.HUD_HEIGHT = int(settings["hud_height"])
+        if "hud_frameless" in settings:
+            config.HUD_FRAMELESS = bool(settings["hud_frameless"])
+        if "hud_fullscreen" in settings:
+            config.HUD_FULLSCREEN = bool(settings["hud_fullscreen"])
+
+        # Aplicar modo pantalla completa en caliente
+        if "hud_fullscreen" in settings and self._window:
+            is_fs = bool(settings["hud_fullscreen"])
+            try:
+                current_fs = False
+                try:
+                    current_fs = self._window.attributes("-fullscreen")
+                except Exception:
+                    pass
+                if current_fs != is_fs:
+                    try:
+                        self._window.attributes("-fullscreen", is_fs)
+                    except Exception:
+                        self._window.toggle_fullscreen()
+                    print(f"[HUD] Pantalla completa cambiada en caliente a: {is_fs}")
+            except Exception as e:
+                print(f"[HUD] Error cambiando a pantalla completa: {e}")
+
+        # Redimensionar la ventana en caliente si cambió el tamaño (y no está en pantalla completa)
+        if ("hud_width" in settings or "hud_height" in settings) and self._window and not config.HUD_FULLSCREEN:
+            try:
+                self._window.resize(config.HUD_WIDTH, config.HUD_HEIGHT)
+                print(f"[HUD] Ventana redimensionada a: {config.HUD_WIDTH}x{config.HUD_HEIGHT}")
+            except Exception as e:
+                print(f"[HUD] Error redimensionando ventana: {e}")
 
         # Persistir en config_user.json
         try:

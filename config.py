@@ -39,6 +39,7 @@ TTS_ENGINE    = user_settings.get("tts_engine", "pyttsx3")   # "pyttsx3" | "elev
 TTS_RATE      = int(user_settings.get("tts_rate", 175))
 TTS_VOLUME    = float(user_settings.get("tts_volume", 0.95))
 TTS_VOICE_LANG = "es"
+TTS_VOICE_ID  = user_settings.get("tts_voice_id", "")
 
 # ── STT (Whisper) ──────────────────────────────────────────────────────────
 WHISPER_MODEL    = user_settings.get("whisper_model", "base")   # tiny | base | small | medium | large
@@ -51,9 +52,10 @@ WAKE_WORD_MODEL   = str(BASE_DIR / "wake_word" / "jarvis_windows.ppn")
 WAKE_WORD_FALLBACK = True
 
 # ── Ventana HUD ────────────────────────────────────────────────────────────
-HUD_WIDTH       = 1280
-HUD_HEIGHT      = 720
-HUD_FRAMELESS   = True
+HUD_WIDTH       = int(user_settings.get("hud_width", 1280))
+HUD_HEIGHT      = int(user_settings.get("hud_height", 720))
+HUD_FRAMELESS   = user_settings.get("hud_frameless", False)
+HUD_FULLSCREEN  = user_settings.get("hud_fullscreen", False)
 HUD_ALWAYS_ON_TOP = False
 
 # ── Memoria ────────────────────────────────────────────────────────────────

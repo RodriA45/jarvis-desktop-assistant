@@ -6,6 +6,8 @@ import asyncio
 import sys
 import os
 import time
+import signal
+import atexit
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -42,16 +44,25 @@ async def async_main(hud: JarvisHUD):
     await asyncio.sleep(0.3)
 
     # Módulos
-    speaker = Speaker()
+    speaker = Speaker(hud=hud)
     listener = Listener(hud=hud)
     brain = Brain(hud=hud, speaker=speaker)
+
+    # Conectar el clic del micrófono en la interfaz HUD con el disparador
+    hud.on_mic_click = lambda: listener.trigger_mic()
+
+    # Registrar atajo de teclado global Ctrl + Alt + J
+    try:
+        import keyboard
+        keyboard.add_hotkey('ctrl+alt+j', lambda: listener.trigger_mic())
+        print("[JARVIS] Atajo global 'Ctrl+Alt+J' registrado con éxito.")
+    except Exception as e:
+        print(f"[JARVIS] No se pudo registrar el atajo global: {e}")
 
     # Monitor de sistema en background
     sysmon = SysMonitor(
         hud=hud,
-        on_alert=lambda msg: asyncio.run_coroutine_threadsafe(
-            speaker.speak(msg), asyncio.get_event_loop()
-        )
+        on_alert=lambda msg: speaker.speak_now(msg)
     )
     sysmon.start()
 
@@ -110,6 +121,23 @@ def start_jarvis_backend(hud: JarvisHUD):
         
     t = threading.Thread(target=_run, daemon=True)
     t.start()
+
+
+def cleanup_and_exit(signum=None, frame=None):
+    print("\n[JARVIS] Apagando J.A.R.V.I.S y cerrando procesos en segundo plano...")
+    import os
+    try:
+        os.system("taskkill /f /im ollama.exe >nul 2>&1")
+    except Exception:
+        pass
+    os._exit(0)
+
+# Registrar manejadores de señales para un apagado limpio
+signal.signal(signal.SIGINT, cleanup_and_exit)
+signal.signal(signal.SIGTERM, cleanup_and_exit)
+if hasattr(signal, "SIGBREAK"):
+    signal.signal(signal.SIGBREAK, cleanup_and_exit)
+atexit.register(cleanup_and_exit)
 
 
 def main():

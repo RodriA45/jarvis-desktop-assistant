@@ -35,3 +35,6 @@ soundfile>=0.12.1
 
 # ── Memoria semántica (opcional - mejora la búsqueda) ────────────────────
 # sentence-transformers>=2.0.0  # instalar si querés embeddings reales
+
+# ── Atajos de Teclado Globales ────────────────────────────────────────────
+keyboard>=0.13.5

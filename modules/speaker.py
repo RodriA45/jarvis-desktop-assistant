@@ -6,6 +6,7 @@ import io
 import os
 import re
 import threading
+import queue
 
 from config import (TTS_ENGINE, TTS_RATE, TTS_VOLUME, TTS_VOICE_LANG,
                     ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID)
@@ -25,63 +26,109 @@ def _clean_text(text: str) -> str:
 
 
 class Speaker:
-    def __init__(self):
+    def __init__(self, hud=None):
+        self.hud = hud
+        self._queue = queue.Queue()
         self._engine = None
         self._lock = threading.Lock()
         self._mode = TTS_ENGINE
+        
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+        print(f"[SPEAKER] Motor TTS: {self._mode} (Hilo dedicado iniciado)")
+
+    def _worker(self):
+        # Inicializar pyttsx3 en este hilo dedicado para evitar problemas de COM
         if self._mode == "pyttsx3":
             self._init_pyttsx3()
-        print(f"[SPEAKER] Motor TTS: {self._mode}")
+            
+        while True:
+            try:
+                text = self._queue.get()
+                if text is None:
+                    break
+                self._speak_sync(text)
+                self._queue.task_done()
+            except Exception as e:
+                print(f"[SPEAKER WORKER] Error: {e}")
 
     def _init_pyttsx3(self):
         try:
             import pyttsx3
+            import config
             self._engine = pyttsx3.init()
-            self._engine.setProperty("rate", TTS_RATE)
-            self._engine.setProperty("volume", TTS_VOLUME)
+            self._engine.setProperty("rate", config.TTS_RATE)
+            self._engine.setProperty("volume", config.TTS_VOLUME)
 
             voices = self._engine.getProperty("voices")
-            for voice in voices:
-                if TTS_VOICE_LANG.lower() in voice.id.lower() or \
-                   "spanish" in voice.name.lower() or \
-                   "español" in voice.name.lower():
-                    self._engine.setProperty("voice", voice.id)
-                    print(f"[SPEAKER] Voz seleccionada: {voice.name}")
-                    break
+            if hasattr(config, "TTS_VOICE_ID") and config.TTS_VOICE_ID:
+                try:
+                    self._engine.setProperty("voice", config.TTS_VOICE_ID)
+                    voice_name = next((v.name for v in voices if v.id == config.TTS_VOICE_ID), config.TTS_VOICE_ID)
+                    print(f"[SPEAKER] Voz cargada: {voice_name}")
+                except Exception:
+                    pass
+            else:
+                for voice in voices:
+                    if config.TTS_VOICE_LANG.lower() in voice.id.lower() or \
+                       "spanish" in voice.name.lower() or \
+                       "español" in voice.name.lower():
+                        self._engine.setProperty("voice", voice.id)
+                        print(f"[SPEAKER] Voz seleccionada por defecto: {voice.name}")
+                        break
         except Exception as e:
             print(f"[SPEAKER] pyttsx3 no disponible: {e}. Usando print.")
             self._mode = "print"
 
-    async def speak(self, text: str):
+    def speak_now(self, text: str):
         clean = _clean_text(text)
         if not clean:
             return
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._speak_sync, clean)
+        self._queue.put(clean)
+
+    async def speak(self, text: str):
+        self.speak_now(text)
 
     def _speak_sync(self, text: str):
-        if self._mode == "pyttsx3" and self._engine:
-            with self._lock:
-                try:
-                    self._engine.say(text)
-                    self._engine.runAndWait()
-                except Exception as e:
-                    print(f"[SPEAKER] Error TTS: {e}")
-                    print(f"[JARVIS VOZ] {text}")
-        elif self._mode == "elevenlabs":
-            self._speak_elevenlabs(text)
-        else:
-            print(f"[JARVIS VOZ] {text}")
+        import config
+        self._mode = config.TTS_ENGINE
+        
+        if self.hud:
+            self.hud._js("window.jarvis && jarvis.setSpeaking(true)")
+            
+        try:
+            if self._mode == "pyttsx3":
+                if not self._engine:
+                    self._init_pyttsx3()
+                with self._lock:
+                    try:
+                        self._engine.setProperty("rate", config.TTS_RATE)
+                        self._engine.setProperty("volume", config.TTS_VOLUME)
+                        if hasattr(config, "TTS_VOICE_ID") and config.TTS_VOICE_ID:
+                            self._engine.setProperty("voice", config.TTS_VOICE_ID)
+                        self._engine.say(text)
+                        self._engine.runAndWait()
+                    except Exception as e:
+                        print(f"[SPEAKER] Error TTS: {e}")
+                        print(f"[JARVIS VOZ] {text}")
+            elif self._mode == "elevenlabs":
+                self._speak_elevenlabs(text)
+            else:
+                print(f"[JARVIS VOZ] {text}")
+        finally:
+            if self.hud:
+                self.hud._js("window.jarvis && jarvis.setSpeaking(false)")
 
     def _speak_elevenlabs(self, text: str):
         try:
             import requests
             import sounddevice as sd
             import soundfile as sf
+            import config
 
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{config.ELEVENLABS_VOICE_ID}"
             headers = {
-                "xi-api-key": ELEVENLABS_API_KEY,
+                "xi-api-key": config.ELEVENLABS_API_KEY,
                 "Content-Type": "application/json"
             }
             payload = {
@@ -96,7 +143,7 @@ class Speaker:
                 sd.play(data, samplerate)
                 sd.wait()
             else:
-                print(f"[SPEAKER] ElevenLabs error {r.status_code}")
+                print(f"[SPEAKER] ElevenLabs error {r.status_code}: {r.text}")
         except Exception as e:
             print(f"[SPEAKER] ElevenLabs falló: {e}")
 

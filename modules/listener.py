@@ -44,9 +44,20 @@ class Listener:
         self._porcupine = None
         self._use_whisper = WHISPER_AVAILABLE and SOUNDDEVICE_AVAILABLE
         self._wake_mode = self._detect_wake_mode()
+        self.loop = asyncio.get_event_loop()
+        self.mic_trigger_event = asyncio.Event()
 
         print(f"[LISTENER] Wake mode: {self._wake_mode}")
         print(f"[LISTENER] STT: {'Whisper' if self._use_whisper else 'SpeechRecognition'}")
+
+        # Iniciar carga de Whisper de fondo para evitar bloqueos
+        if self._use_whisper:
+            threading.Thread(target=self._load_whisper, daemon=True).start()
+
+    def trigger_mic(self):
+        """Dispara el micrófono de forma segura desde otro hilo (como la GUI)."""
+        print("[LISTENER] Disparador de micrófono desde HUD activado.")
+        self.loop.call_soon_threadsafe(self.mic_trigger_event.set)
 
     def _detect_wake_mode(self):
         if (PORCUPINE_AVAILABLE
@@ -60,29 +71,55 @@ class Listener:
 
     def _load_whisper(self):
         if self._whisper_model is None and self._use_whisper:
-            print(f"[LISTENER] Cargando Whisper ({WHISPER_MODEL})...")
-            self._whisper_model = whisper.load_model(WHISPER_MODEL)
-            print("[LISTENER] Whisper listo.")
+            print(f"[LISTENER] Cargando Whisper ({WHISPER_MODEL}) de fondo...")
+            try:
+                import whisper
+                self._whisper_model = whisper.load_model(WHISPER_MODEL)
+                print("[LISTENER] Whisper listo.")
+            except Exception as e:
+                print(f"[LISTENER] Error cargando Whisper: {e}")
 
     async def wait_for_wake_word(self):
-        if self._wake_mode == "porcupine":
-            try:
-                await self._wait_porcupine()
-            except Exception as e:
-                print(f"[LISTENER] Error en Picovoice: {e}. Degradando a modo teclado.")
-                if self.hud:
-                    self.hud.add_log("warn", "Picovoice falló. Fallback teclado.")
-                self._wake_mode = "keyboard"
+        self.mic_trigger_event.clear()
+        
+        async def detect_wake():
+            if self._wake_mode == "porcupine":
+                try:
+                    await self._wait_porcupine()
+                except Exception as e:
+                    print(f"[LISTENER] Error en Picovoice: {e}. Degradando a modo teclado.")
+                    if self.hud:
+                        self.hud.add_log("warn", "Picovoice falló. Fallback teclado.")
+                    self._wake_mode = "keyboard"
+                    await self._wait_keyboard()
+            else:
                 await self._wait_keyboard()
-        else:
-            await self._wait_keyboard()
+
+        wake_task = asyncio.create_task(detect_wake())
+        mic_task = asyncio.create_task(self.mic_trigger_event.wait())
+
+        done, pending = await asyncio.wait(
+            [wake_task, mic_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+
+        for t in pending:
+            t.cancel()
+            try:
+                await asyncio.wait_for(t, timeout=0.1)
+            except BaseException:
+                pass
 
     async def _wait_keyboard(self):
-        loop = asyncio.get_event_loop()
-        print("[LISTENER] Presioná ENTER para hablar...")
         if self.hud:
-            self.hud.update_status("Presioná ENTER para hablar")
-        await loop.run_in_executor(None, input)
+            print("[LISTENER] Esperando click de micrófono en el HUD...")
+            self.hud.update_status("Esperando activación de micrófono...")
+            while True:
+                await asyncio.sleep(3600)
+        else:
+            loop = asyncio.get_event_loop()
+            print("[LISTENER] Presioná ENTER para hablar...")
+            await loop.run_in_executor(None, input)
 
     async def _wait_porcupine(self):
         loop = asyncio.get_event_loop()
@@ -115,8 +152,22 @@ class Listener:
     async def listen(self) -> str:
         loop = asyncio.get_event_loop()
         if self._use_whisper:
-            self._load_whisper()
-            return await loop.run_in_executor(None, self._listen_whisper)
+            def _wait_and_listen():
+                import time
+                start_t = time.time()
+                # Esperar a que se complete la carga de fondo (máx 30s)
+                while self._whisper_model is None and time.time() - start_t < 30:
+                    time.sleep(0.2)
+                if self._whisper_model is None:
+                    self._load_whisper()
+                
+                if self._whisper_model is None:
+                    print("[LISTENER] Whisper no pudo cargarse. Usando SpeechRecognition como fallback.")
+                    if self.hud:
+                        self.hud.add_log("warn", "Whisper no disponible. Usando SR.")
+                    return self._listen_sr()
+                return self._listen_whisper()
+            return await loop.run_in_executor(None, _wait_and_listen)
         elif SR_AVAILABLE:
             return await loop.run_in_executor(None, self._listen_sr)
         else:
@@ -185,6 +236,8 @@ class Listener:
             wf.writeframes((audio * 32767).astype(np.int16).tobytes())
 
         try:
+            if self._whisper_model is None:
+                raise ValueError("Modelo Whisper no inicializado.")
             result = self._whisper_model.transcribe(
                 tmp_path,
                 language=WHISPER_LANGUAGE,
@@ -193,9 +246,17 @@ class Listener:
             text = result["text"].strip()
             print(f"[STT] Transcripción: {text}")
             return text
+        except Exception as e:
+            print(f"[STT] Error Whisper: {e}. Fallback a SpeechRecognition.")
+            if self.hud:
+                self.hud.add_log("warn", "Error STT Whisper, intentando SR...")
+            return self._listen_sr()
         finally:
             if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
     def _listen_sr(self) -> str:
         recognizer = sr.Recognizer()
