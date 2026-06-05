@@ -259,3 +259,52 @@ class SystemController:
             return f"Acción de ventana '{action}' no reconocida."
         except Exception as e:
             return f"Error controlando ventana: {e}"
+
+    def lock_screen(self) -> str:
+        """Bloquea la PC con la API de Windows."""
+        try:
+            import ctypes
+            ctypes.windll.user32.LockWorkStation()
+            return "Sistema bloqueado correctamente."
+        except Exception as e:
+            return f"No se pudo bloquear la PC: {e}"
+
+    def suspend_pc(self) -> str:
+        """Suspende la PC con comandos nativos de Windows."""
+        try:
+            import os
+            os.system("rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
+            return "PC suspendida correctamente."
+        except Exception as e:
+            return f"No se pudo suspender la PC: {e}"
+
+    def restart_pc(self) -> str:
+        """Reinicia la PC con comando nativo."""
+        try:
+            import os
+            os.system("shutdown /r /t 1")
+            return "Reiniciando la PC..."
+        except Exception as e:
+            return f"No se pudo reiniciar la PC: {e}"
+
+    def shutdown_pc(self) -> str:
+        """Apaga la PC con comando nativo."""
+        try:
+            import os
+            os.system("shutdown /s /t 1")
+            return "Apagando la PC..."
+        except Exception as e:
+            return f"No se pudo apagar la PC: {e}"
+
+    def play_spotify(self, query: str) -> str:
+        """Busca y reproduce contenido en Spotify abriendo la URL de búsqueda."""
+        try:
+            import webbrowser
+            import urllib.parse
+            encoded = urllib.parse.quote(query)
+            url = f"https://open.spotify.com/search/{encoded}"
+            webbrowser.open(url)
+            return f"Buscando '{query}' en Spotify..."
+        except Exception as e:
+            return f"No se pudo buscar en Spotify: {e}"
+

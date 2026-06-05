@@ -56,6 +56,7 @@ HUD_WIDTH       = int(user_settings.get("hud_width", 1280))
 HUD_HEIGHT      = int(user_settings.get("hud_height", 720))
 HUD_FRAMELESS   = user_settings.get("hud_frameless", False)
 HUD_FULLSCREEN  = user_settings.get("hud_fullscreen", False)
+HUD_THEME       = user_settings.get("hud_theme", "cyan")
 HUD_ALWAYS_ON_TOP = False
 
 # ── Memoria ────────────────────────────────────────────────────────────────

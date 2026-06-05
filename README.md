@@ -27,6 +27,7 @@ El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su pa
 | **🎵 Control de Ventanas y Medios** | Simula atajos físicos de Windows para acoplar ventanas, minimizar todo, y controlar reproductores (ej. Spotify). |
 | **🧠 Memoria Semántica** | Base de datos SQLite local con embeddings deterministas para recordar contextos de charlas anteriores. |
 | **🎛️ Preajustes de Pantalla** | Selector rápido de dimensiones de ventana (Chica, Mediana, Grande), pantalla completa o escala personalizada en caliente. |
+| **🎨 Temas Visuales Dinámicos** | Alterna entre temas holográficos (Cian clásico, Rojo Stark Mark III, Verde científico, Oro tecnológico) en caliente. |
 | **🎹 Atajo de Teclado Global** | Activa el micrófono instantáneamente desde cualquier aplicación de Windows usando el atajo `Ctrl + Alt + J`. |
 | **🤫 Silenciar y Parar Voz** | Botones de control rápido para silenciar la escucha del micrófono y detener el habla de Jarvis al instante. |
 | **🎨 Icono Holográfico** | Reemplazo del icono estándar de Python en la barra de tareas por un reactor arc holográfico cyan oficial de Jarvis. |

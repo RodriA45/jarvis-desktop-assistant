@@ -193,7 +193,7 @@ class JarvisHUD:
         try:
             from config import (ANTHROPIC_API_KEY, GEMINI_API_KEY, TTS_ENGINE, TTS_RATE, TTS_VOLUME,
                                 WHISPER_MODEL, LLM_PROVIDER, OLLAMA_MODEL, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, TTS_VOICE_ID,
-                                HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_FULLSCREEN)
+                                HUD_WIDTH, HUD_HEIGHT, HUD_FRAMELESS, HUD_FULLSCREEN, HUD_THEME)
             
             # Obtener voces locales disponibles
             voices = []
@@ -221,6 +221,7 @@ class JarvisHUD:
                 "hud_height": HUD_HEIGHT,
                 "hud_frameless": HUD_FRAMELESS,
                 "hud_fullscreen": HUD_FULLSCREEN,
+                "hud_theme": HUD_THEME,
                 "available_voices": voices
             }
         except Exception:
@@ -259,6 +260,9 @@ class JarvisHUD:
             config.HUD_FRAMELESS = bool(settings["hud_frameless"])
         if "hud_fullscreen" in settings:
             config.HUD_FULLSCREEN = bool(settings["hud_fullscreen"])
+        if "hud_theme" in settings:
+            config.HUD_THEME = settings["hud_theme"]
+            self._js(f"window.jarvis && jarvis.setTheme('{config.HUD_THEME}')")
 
         # Aplicar modo pantalla completa en caliente
         if "hud_fullscreen" in settings and self._window:

@@ -254,11 +254,18 @@ class Brain:
         self.speaker = speaker  # para recordatorios por voz
 
         # Sistema de recordatorios
-        self.reminders = ReminderSystem(on_remind=self._on_reminder_fire)
+        self.reminders = ReminderSystem(
+            on_remind=self._on_reminder_fire,
+            on_update=self._on_reminders_update
+        )
 
         # Escuchar cambios de configuración desde el HUD (ej. API Key)
         if self.hud:
             self.hud.on_settings_change(self._on_settings_change)
+
+    def _on_reminders_update(self, rems: list):
+        if self.hud:
+            self.hud.update_reminders(rems)
 
     def _on_settings_change(self, settings: dict):
         import config
@@ -276,6 +283,9 @@ class Brain:
         if "ollama_model" in settings:
             config.OLLAMA_MODEL = settings["ollama_model"]
             print(f"[BRAIN] Modelo de Ollama cambiado a: {config.OLLAMA_MODEL}")
+        if "hud_theme" in settings:
+            config.HUD_THEME = settings["hud_theme"]
+            print(f"[BRAIN] Tema de color cambiado a: {config.HUD_THEME}")
 
     def _on_reminder_fire(self, text: str):
         """Callback cuando dispara un recordatorio."""
@@ -451,8 +461,22 @@ class Brain:
             return OfflineResponse([Block("tool_use", id="open_app_chrome", name="open_application", input={"app_name": "chrome"})], "tool_use")
         elif "bloc de notas" in user_msg or "notepad" in user_msg or "abri bloc" in user_msg:
             return OfflineResponse([Block("tool_use", id="open_app_notepad", name="open_application", input={"app_name": "notepad"})], "tool_use")
-        elif "spotify" in user_msg or "musica" in user_msg:
-            return OfflineResponse([Block("tool_use", id="open_app_spotify", name="open_application", input={"app_name": "spotify"})], "tool_use")
+        elif "spotify" in user_msg or "musica" in user_msg or "reproduci" in user_msg or "reproduce" in user_msg:
+            query = ""
+            for verb in ["reproduci en spotify", "reproduce en spotify", "busca en spotify", "reproduci", "reproduce", "spotify"]:
+                if user_msg.startswith(verb):
+                    query = user_msg[len(verb):].strip()
+                    break
+            if not query:
+                import re
+                m = re.search(r"(?:reproduci|reproduce|busca|escuchar)\s+(?:a\s+|en\s+spotify\s+|la\s+cancion\s+|la\s+canción\s+)?(.+)", user_msg)
+                if m:
+                    query = m.group(1).strip()
+            
+            if query and "musica" not in query:
+                return OfflineResponse([Block("tool_use", id="spotify_play", name="open_url", input={"url": f"spotify_search:{query}"})], "tool_use")
+            else:
+                return OfflineResponse([Block("tool_use", id="open_app_spotify", name="open_application", input={"app_name": "spotify"})], "tool_use")
         elif "calculadora" in user_msg:
             return OfflineResponse([Block("tool_use", id="open_app_calc", name="open_application", input={"app_name": "calc"})], "tool_use")
         elif "consola" in user_msg or "terminal" in user_msg or "cmd" in user_msg:
@@ -497,6 +521,15 @@ class Brain:
         elif "captura" in user_msg or "foto de pantalla" in user_msg:
             return OfflineResponse([Block("tool_use", id="screenshot_cmd", name="take_screenshot", input={"analyze": False})], "tool_use")
         # 6. Telemetría / Sistema
+        # 6.5 Control de energía del sistema operativo
+        elif any(w in user_msg for w in ["bloquear la pc", "bloquea la pc", "bloquear pc", "bloquea pc", "bloquear pantalla", "bloquear la computadora", "bloquea la computadora"]):
+            return OfflineResponse([Block("tool_use", id="sys_lock", name="run_command", input={"command": "lock"})], "tool_use")
+        elif any(w in user_msg for w in ["suspender la pc", "suspender pc", "suspende pc", "suspender la computadora", "suspende la computadora", "suspende la pc"]):
+            return OfflineResponse([Block("tool_use", id="sys_suspend", name="run_command", input={"command": "suspend"})], "tool_use")
+        elif any(w in user_msg for w in ["reiniciar la pc", "reiniciar pc", "reinicia pc", "reiniciar la computadora", "reinicia la computadora"]):
+            return OfflineResponse([Block("tool_use", id="sys_restart", name="run_command", input={"command": "restart"})], "tool_use")
+        elif any(w in user_msg for w in ["apagar la pc", "apagar pc", "apaga pc", "apagar la computadora", "apaga la computadora"]):
+            return OfflineResponse([Block("tool_use", id="sys_shutdown", name="run_command", input={"command": "shutdown"})], "tool_use")
         elif "sistema" in user_msg or "recursos" in user_msg or "cpu" in user_msg or "ram" in user_msg or "gpu" in user_msg or "disco" in user_msg:
             return OfflineResponse([Block("tool_use", id="sys_info_cmd", name="get_system_info", input={"info_type": "all"})], "tool_use")
         # 7. Clima y búsqueda de información general offline (DuckDuckGo integration)
@@ -848,9 +881,23 @@ class Brain:
                     return self._analyze_image(path, "¿Qué hay en esta captura de pantalla?")
                 return result
             elif name == "open_url":
-                return self.system.open_url(inputs["url"])
+                url = inputs["url"]
+                if url.startswith("spotify_search:"):
+                    q = url.replace("spotify_search:", "")
+                    return self.system.play_spotify(q)
+                return self.system.open_url(url)
             elif name == "run_command":
                 cmd = inputs["command"]
+                if cmd in ["lock", "suspend", "restart", "shutdown"]:
+                    if cmd == "lock":
+                        return self.system.lock_screen()
+                    elif cmd == "suspend":
+                        return self.system.suspend_pc()
+                    elif cmd == "restart":
+                        return self.system.restart_pc()
+                    elif cmd == "shutdown":
+                        return self.system.shutdown_pc()
+                
                 shell = inputs.get("shell", "cmd")
                 
                 # Palabras clave sospechosas o potencialmente peligrosas

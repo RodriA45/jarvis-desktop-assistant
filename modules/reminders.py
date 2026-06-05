@@ -19,10 +19,11 @@ class Reminder:
 
 
 class ReminderSystem:
-    def __init__(self, on_remind: Callable = None):
+    def __init__(self, on_remind: Callable = None, on_update: Callable = None):
         self._reminders = {}
         self._next_id = 1
         self._on_remind = on_remind  # callback(text) cuando dispara
+        self._on_update = on_update  # callback(list) cuando cambian o cada segundo
         self._lock = threading.Lock()
         self._running = True
         t = threading.Thread(target=self._loop, daemon=True)
@@ -81,6 +82,12 @@ class ReminderSystem:
                 print(f"[REMINDER] ¡Disparando! {r.text}")
                 if self._on_remind:
                     threading.Thread(target=self._on_remind, args=(r.text,), daemon=True).start()
+
+            if self._on_update:
+                try:
+                    self._on_update(self.list_all())
+                except Exception as e:
+                    print(f"[REMINDER LOOP] Error en on_update: {e}")
 
             time.sleep(1)
 
