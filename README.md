@@ -6,6 +6,10 @@
   <img src="https://img.shields.io/badge/LLM_Providers-Claude%20%7C%20Gemini%20%7C%20Ollama-orange?style=for-the-badge" alt="LLM Providers">
 </p>
 
+<p align="center">
+  <img src="jarvis.png" alt="J.A.R.V.I.S Interface">
+</p>
+
 ---
 
 ## 🌌 Visión General
