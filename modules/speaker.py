@@ -26,7 +26,7 @@ def _clean_text(text: str) -> str:
 
 
 class Speaker:
-    def __init__(self, hud=None):
+    def __init__(self, hud: object = None) -> None:
         self.hud = hud
         self._queue = queue.Queue()
         self._engine = None
@@ -37,7 +37,7 @@ class Speaker:
         self._thread.start()
         print(f"[SPEAKER] Motor TTS: {self._mode} (Hilo dedicado iniciado)")
 
-    def _worker(self):
+    def _worker(self) -> None:
         # Inicializar pyttsx3 en este hilo dedicado para evitar problemas de COM
         if self._mode == "pyttsx3":
             self._init_pyttsx3()
@@ -50,9 +50,11 @@ class Speaker:
                 self._speak_sync(text)
                 self._queue.task_done()
             except Exception as e:
+                import traceback
                 print(f"[SPEAKER WORKER] Error: {e}")
+                traceback.print_exc()
 
-    def _init_pyttsx3(self):
+    def _init_pyttsx3(self) -> None:
         try:
             import pyttsx3
             import config
@@ -77,10 +79,12 @@ class Speaker:
                         print(f"[SPEAKER] Voz seleccionada por defecto: {voice.name}")
                         break
         except Exception as e:
+            import traceback
             print(f"[SPEAKER] pyttsx3 no disponible: {e}. Usando print.")
+            traceback.print_exc()
             self._mode = "print"
 
-    def stop(self):
+    def stop(self) -> None:
         """Para la reproducción de voz inmediatamente y vacía la cola."""
         import queue
         while not self._queue.empty():
@@ -94,25 +98,33 @@ class Speaker:
             try:
                 self._engine.stop()
             except Exception as e:
+                import traceback
                 print(f"[SPEAKER] Error deteniendo motor pyttsx3: {e}")
+                traceback.print_exc()
         elif self._mode == "elevenlabs":
             try:
                 import sounddevice as sd
                 sd.stop()
             except Exception:
                 pass
-        print("[SPEAKER] Reproducción de voz detenida por el usuario.")
+        elif self._mode == "edge-tts":
+            try:
+                import pygame
+                if pygame.mixer.get_init():
+                    pygame.mixer.music.stop()
+            except Exception:
+                pass
 
-    def speak_now(self, text: str):
+    def speak_now(self, text: str) -> None:
         clean = _clean_text(text)
         if not clean:
             return
         self._queue.put(clean)
 
-    async def speak(self, text: str):
+    async def speak(self, text: str) -> None:
         self.speak_now(text)
 
-    def _speak_sync(self, text: str):
+    def _speak_sync(self, text: str) -> None:
         import config
         self._mode = config.TTS_ENGINE
         
@@ -132,8 +144,12 @@ class Speaker:
                         self._engine.say(text)
                         self._engine.runAndWait()
                     except Exception as e:
+                        import traceback
                         print(f"[SPEAKER] Error TTS: {e}")
+                        traceback.print_exc()
                         print(f"[JARVIS VOZ] {text}")
+            elif self._mode == "edge-tts":
+                self._speak_edge_tts(text)
             elif self._mode == "elevenlabs":
                 self._speak_elevenlabs(text)
             else:
@@ -142,7 +158,55 @@ class Speaker:
             if self.hud:
                 self.hud._js("window.jarvis && jarvis.setSpeaking(false)")
 
-    def _speak_elevenlabs(self, text: str):
+    def _speak_edge_tts(self, text: str) -> None:
+        try:
+            import edge_tts
+            import asyncio
+            import tempfile
+            import os
+            import pygame
+            import config
+            
+            voice = getattr(config, "TTS_VOICE_ID", "")
+            if not voice:
+                voice = "es-AR-TomasNeural"
+                
+            communicate = edge_tts.Communicate(text, voice)
+            
+            fd, temp_path = tempfile.mkstemp(suffix=".mp3")
+            os.close(fd)
+            
+            # Ejecutar generación en el event loop nuevo de este thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(communicate.save(temp_path))
+            loop.close()
+            
+            # Reproducir con pygame
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+                
+            pygame.mixer.music.load(temp_path)
+            pygame.mixer.music.set_volume(config.TTS_VOLUME)
+            pygame.mixer.music.play()
+            
+            while pygame.mixer.music.get_busy():
+                pygame.time.Clock().tick(10)
+                
+            pygame.mixer.music.unload()
+            # No cerramos pygame.mixer quit() para reuso eficiente
+            
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            import traceback
+            print(f"[SPEAKER] Edge TTS falló: {e}")
+            traceback.print_exc()
+
+    def _speak_elevenlabs(self, text: str) -> None:
         try:
             import requests
             import sounddevice as sd
@@ -168,9 +232,11 @@ class Speaker:
             else:
                 print(f"[SPEAKER] ElevenLabs error {r.status_code}: {r.text}")
         except Exception as e:
+            import traceback
             print(f"[SPEAKER] ElevenLabs falló: {e}")
+            traceback.print_exc()
 
-    def play_tone(self, tone_type: str = "activate"):
+    def play_tone(self, tone_type: str = "activate") -> None:
         """Reproduce un beep corto de activación."""
         try:
             import sounddevice as sd

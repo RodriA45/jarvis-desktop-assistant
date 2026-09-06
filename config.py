@@ -35,11 +35,11 @@ OLLAMA_HOST       = user_settings.get("ollama_host", "http://localhost:11434")
 GEMINI_MODEL      = user_settings.get("gemini_model", "gemini-1.5-flash")
 
 # ── Voz TTS ────────────────────────────────────────────────────────────────
-TTS_ENGINE    = user_settings.get("tts_engine", "pyttsx3")   # "pyttsx3" | "elevenlabs"
+TTS_ENGINE    = user_settings.get("tts_engine", "edge-tts")   # "pyttsx3" | "elevenlabs" | "edge-tts"
 TTS_RATE      = int(user_settings.get("tts_rate", 175))
 TTS_VOLUME    = float(user_settings.get("tts_volume", 0.95))
 TTS_VOICE_LANG = "es"
-TTS_VOICE_ID  = user_settings.get("tts_voice_id", "")
+TTS_VOICE_ID  = user_settings.get("tts_voice_id", "es-AR-TomasNeural")
 
 # ── STT (Whisper) ──────────────────────────────────────────────────────────
 WHISPER_MODEL    = user_settings.get("whisper_model", "base")   # tiny | base | small | medium | large

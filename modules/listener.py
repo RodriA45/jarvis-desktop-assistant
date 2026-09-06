@@ -9,11 +9,7 @@ import tempfile
 import threading
 import numpy as np
 
-try:
-    import pvporcupine
-    PORCUPINE_AVAILABLE = True
-except ImportError:
-    PORCUPINE_AVAILABLE = False
+# Picovoice removido a favor de Vosk (Offline & Gratis)
 
 try:
     import sounddevice as sd
@@ -33,7 +29,7 @@ try:
 except ImportError:
     SR_AVAILABLE = False
 
-from config import (PICOVOICE_API_KEY, WAKE_WORD_MODEL, WAKE_WORD_FALLBACK,
+from config import (WAKE_WORD_FALLBACK,
                     WHISPER_MODEL, WHISPER_LANGUAGE, STT_TIMEOUT, STT_PHRASE_LIMIT)
 
 
@@ -42,7 +38,6 @@ class Listener:
         self.hud = hud
         self.muted = False
         self._whisper_model = None
-        self._porcupine = None
         self._use_whisper = WHISPER_AVAILABLE and SOUNDDEVICE_AVAILABLE
         self._wake_mode = self._detect_wake_mode()
         self.loop = asyncio.get_event_loop()
@@ -66,11 +61,9 @@ class Listener:
         return self.muted
 
     def _detect_wake_mode(self):
-        if (PORCUPINE_AVAILABLE
-                and SOUNDDEVICE_AVAILABLE
-                and os.path.exists(WAKE_WORD_MODEL)
-                and PICOVOICE_API_KEY != "TU_PICOVOICE_KEY_AQUI"):
-            return "porcupine"
+        vosk_path = os.path.join(os.path.dirname(__file__), "..", "wake_word", "vosk_model")
+        if SOUNDDEVICE_AVAILABLE and os.path.exists(vosk_path):
+            return "vosk"
         if WAKE_WORD_FALLBACK:
             return "keyboard"
         return "keyboard"
@@ -93,13 +86,13 @@ class Listener:
             await asyncio.sleep(0.5)
         
         async def detect_wake():
-            if self._wake_mode == "porcupine":
+            if self._wake_mode == "vosk":
                 try:
-                    await self._wait_porcupine()
+                    await self._wait_vosk()
                 except Exception as e:
-                    print(f"[LISTENER] Error en Picovoice: {e}. Degradando a modo teclado.")
+                    print(f"[LISTENER] Error en Vosk: {e}. Degradando a modo teclado.")
                     if self.hud:
-                        self.hud.add_log("warn", "Picovoice falló. Fallback teclado.")
+                        self.hud.add_log("warn", "Vosk falló. Fallback teclado.")
                     self._wake_mode = "keyboard"
                     await self._wait_keyboard()
             else:
@@ -131,33 +124,49 @@ class Listener:
             print("[LISTENER] Presioná ENTER para hablar...")
             await loop.run_in_executor(None, input)
 
-    async def _wait_porcupine(self):
+    async def _wait_vosk(self):
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._porcupine_blocking)
+        await loop.run_in_executor(None, self._vosk_blocking)
 
-    def _porcupine_blocking(self):
-        import pvporcupine
+    def _vosk_blocking(self):
+        import vosk
+        import json
         import sounddevice as sd
+        import queue
 
-        porcupine = pvporcupine.create(
-            access_key=PICOVOICE_API_KEY,
-            keyword_paths=[WAKE_WORD_MODEL]
-        )
+        vosk.SetLogLevel(-1)
+        model_path = os.path.join(os.path.dirname(__file__), "..", "wake_word", "vosk_model")
+        if not os.path.exists(model_path):
+            print(f"[LISTENER] Modelo Vosk no encontrado en {model_path}")
+            return
+            
+        model = vosk.Model(model_path)
+        samplerate = 16000
+        rec = vosk.KaldiRecognizer(model, samplerate)
+        
+        q = queue.Queue()
+        def callback(indata, frames, time, status):
+            if status:
+                pass
+            q.put(bytes(indata))
+            
         try:
-            with sd.RawInputStream(
-                samplerate=porcupine.sample_rate,
-                blocksize=porcupine.frame_length,
-                dtype="int16",
-                channels=1
-            ) as stream:
+            with sd.RawInputStream(samplerate=samplerate, blocksize=8000, dtype='int16', channels=1, callback=callback):
+                print("[LISTENER] Vosk Wake Word ACTIVO. Di 'jarvis'.")
                 while True:
-                    pcm, _ = stream.read(porcupine.frame_length)
-                    pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
-                    result = porcupine.process(pcm)
-                    if result >= 0:
-                        return
-        finally:
-            porcupine.delete()
+                    data = q.get()
+                    if rec.AcceptWaveform(data):
+                        res = json.loads(rec.Result())
+                        text = res.get("text", "")
+                        if any(w in text for w in ["jarvis", "computadora", "llarvis", "arvis", "harbis"]):
+                            return
+                    else:
+                        res = json.loads(rec.PartialResult())
+                        text = res.get("partial", "")
+                        if any(w in text for w in ["jarvis", "computadora", "llarvis", "arvis", "harbis"]):
+                            return
+        except Exception as e:
+            print(f"[LISTENER] Error en Vosk: {e}")
 
     async def listen(self) -> str:
         loop = asyncio.get_event_loop()

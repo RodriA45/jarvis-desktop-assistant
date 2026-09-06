@@ -139,11 +139,26 @@ class SystemController:
         except Exception as e:
             return f"No pude abrir la URL: {e}"
 
-    def run_command(self, command: str, shell: str = "cmd") -> str:
+    def is_dangerous_command(self, command: str) -> bool:
+        dangerous_keywords = [
+            "del", "rm", "rd", "rmdir", "format", "shutdown", "restart", 
+            "taskkill", "kill", "stop-process", "remove-item", "reg", 
+            "setx", "net", "sc", "powershell"
+        ]
+        import re
+        cmd_lower = command.lower()
+        for kw in dangerous_keywords:
+            if re.search(rf"\b{kw}\b", cmd_lower):
+                return True
         BLOCKED = ["format", "del /s", "rd /s", "rm -rf", "shutdown /r", "shutdown /s"]
         for b in BLOCKED:
-            if b in command.lower():
-                return f"Comando bloqueado por seguridad: contiene '{b}'."
+            if b in cmd_lower:
+                return True
+        return False
+
+    def run_command(self, command: str, shell: str = "cmd") -> str:
+        if self.is_dangerous_command(command):
+            return f"Comando bloqueado preventivamente por seguridad: '{command}'."
         try:
             if shell == "powershell":
                 result = subprocess.run(

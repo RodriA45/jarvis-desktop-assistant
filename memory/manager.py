@@ -13,7 +13,7 @@ MEMORY_FILE.parent.mkdir(exist_ok=True)
 DB_FILE = MEMORY_FILE.parent / "semantic.db"
 
 
-def _embed_simple(text: str) -> list:
+def _embed_simple(text: str) -> list[float]:
     """Embedding lightweight a nivel de palabras (Word Hashing Trick) con stopword filtering."""
     import re
     # Limpieza básica y tokenización a nivel de palabras
@@ -44,7 +44,7 @@ def _embed_simple(text: str) -> list:
     return vec
 
 
-def _cosine(a, b):
+def _cosine(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
     dot = sum(x * y for x, y in zip(a, b))
@@ -87,7 +87,7 @@ class MemoryManager:
         """)
         self._db.commit()
 
-    def save_turn(self, user: str, assistant: str):
+    def save_turn(self, user: str, assistant: str) -> None:
         self._history.append({"role": "user",      "content": user})
         self._history.append({"role": "assistant",  "content": assistant})
 
@@ -113,7 +113,7 @@ class MemoryManager:
         self._detect_preferences(user, assistant)
         self._persist_history()
 
-    def search_similar(self, query: str, top_k: int = 3) -> list:
+    def search_similar(self, query: str, top_k: int = 3) -> list[tuple[float, str, str, str]]:
         """Busca recuerdos semánticamente similares a la query."""
         qemb = _embed_simple(query)
         rows = self._db.execute(
@@ -126,8 +126,10 @@ class MemoryManager:
                 emb = json.loads(emb_json)
                 score = _cosine(qemb, emb)
                 scored.append((score, ts, user, response))
-            except Exception:
-                pass
+            except Exception as e:
+                import traceback
+                print(f"[MEMORY] Error cargando embedding DB: {e}")
+                traceback.print_exc()
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return scored[:top_k]
@@ -144,7 +146,7 @@ class MemoryManager:
                 lines.append(f"[{date}] Usuario dijo: {user[:100]} → Jarvis respondió: {response[:100]}")
         return "\n".join(lines) if lines else ""
 
-    def _detect_preferences(self, user: str, assistant: str):
+    def _detect_preferences(self, user: str, assistant: str) -> None:
         """Extrae preferencias simples del texto y las persiste."""
         import re
         prefs = {}
@@ -167,7 +169,7 @@ class MemoryManager:
         if prefs:
             self._db.commit()
 
-    def get_preferences(self) -> dict:
+    def get_preferences(self) -> dict[str, str]:
         rows = self._db.execute("SELECT key, value FROM preferences").fetchall()
         return {k: v for k, v in rows}
 
@@ -179,15 +181,15 @@ class MemoryManager:
 
     # ── Historial de conversación ───────────────────────────────────────────
 
-    def get_history(self):
+    def get_history(self) -> list[dict[str, str]]:
         return list(self._history)
 
-    def clear(self):
+    def clear(self) -> None:
         self._history = []
         self.total_tokens = 0
         self._persist_history()
 
-    def clear_all(self):
+    def clear_all(self) -> None:
         self.clear()
         self._db.execute("DELETE FROM memories")
         self._db.execute("DELETE FROM preferences")
@@ -199,7 +201,10 @@ class MemoryManager:
                 data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
                 self._history = data.get("history", [])
                 self.total_tokens = data.get("total_tokens", 0)
-            except Exception:
+            except Exception as e:
+                import traceback
+                print(f"[MEMORY] Fallo al cargar historial de archivo: {e}")
+                traceback.print_exc()
                 self._history = []
 
     def _persist_history(self):
@@ -210,4 +215,6 @@ class MemoryManager:
                 encoding="utf-8"
             )
         except Exception as e:
+            import traceback
             print(f"[MEMORY] Error guardando: {e}")
+            traceback.print_exc()

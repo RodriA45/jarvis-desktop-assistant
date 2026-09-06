@@ -14,9 +14,9 @@
 
 ## 🌌 Visión General
 
-**J.A.R.V.I.S** es un asistente de voz híbrido de alto rendimiento diseñado exclusivamente para **Windows**. Cuenta con una interfaz **HUD holográfica al estilo Iron Man** (construida sobre `pywebview`), telemetría de hardware en tiempo real (CPU, RAM y GPU NVIDIA), memoria semántica persistente y un control total de comandos del sistema. 
+**J.A.R.V.I.S 5.0** es un asistente de voz híbrido de alto rendimiento diseñado exclusivamente para **Windows**. Cuenta con una arquitectura modular de plugins, una interfaz **HUD holográfica al estilo Iron Man** (construida sobre `pywebview`), telemetría de hardware en tiempo real (CPU, RAM y GPU NVIDIA), memoria semántica persistente y un control total de comandos del sistema. 
 
-El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su panel de configuración entre procesamiento en la nube (**Claude** / **Gemini**) y procesamiento local 100% offline (**Ollama**).
+El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su panel de configuración entre procesamiento en la nube (**Claude** / **Gemini**) y procesamiento local 100% offline (**Ollama**). Incorpora un motor de síntesis de voz fluido y soporte de streaming LLM en tiempo real.
 
 ---
 
@@ -24,7 +24,9 @@ El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su pa
 
 | Característica | Descripción |
 | :--- | :--- |
-| **🎙️ VAD Inteligente** | Grabación de voz asíncrona optimizada. Corta automáticamente tras 1.5s de silencio o a los 5s de límite. |
+| **🎙️ VAD Inteligente & Vosk** | Detección de palabra de activación "Jarvis" 100% local y offline usando **Vosk** (Español Ligero). Corta automáticamente tras 1.5s de silencio. |
+| **⚡ Streaming en Tiempo Real** | Generación de respuesta LLM con streaming y síntesis de voz palabra por palabra (`edge-tts`). La latencia percibida es cercana a cero. |
+| **🧩 Sistema de Plugins** | Arquitectura modular de plugins (`SystemPlugin`, `WebPlugin`, `MemoryPlugin`). Agrega nuevas habilidades soltando archivos en la carpeta `plugins/`. |
 | **🤖 Selector de LLM en Caliente** | Cambia al instante entre **Claude API**, **Gemini API** y **Ollama local** directamente desde la interfaz gráfica. |
 | **📊 Telemetría Real** | Monitoreo dinámico de CPU, RAM, Lectura/Escritura de red, Temperatura del procesador y **GPU NVIDIA** (`nvidia-smi`). |
 | **🖼️ Visión Computacional** | Captura y analiza tu pantalla principal con inteligencia visual para responder dudas del contenido activo. |
@@ -36,7 +38,7 @@ El asistente es **híbrido y dinámico**: puedes cambiar en caliente desde su pa
 | **🤫 Silenciar y Parar Voz** | Botones de control rápido para silenciar la escucha del micrófono y detener el habla de Jarvis al instante. |
 | **🎨 Icono Holográfico** | Reemplazo del icono estándar de Python en la barra de tareas por un reactor arc holográfico cyan oficial de Jarvis. |
 | **🔊 Efectos y Barras de Voz** | Efectos de sonido de ciencia ficción (sintetizados por Web Audio) y barras animadas que pulsan en tiempo real al hablar o escuchar. |
-| **🏠 Asistente Offline Clima/Hora** | Modo offline inteligente con consultas de hora, fecha y clima (integrado con DuckDuckGo gratuito) sin usar API Keys. |
+| **📊 Widgets Dinámicos HUD** | J.A.R.V.I.S puede inyectar código HTML/CSS interactivo directo al lienzo de la interfaz en caliente. |
 | **🔒 Filtro de Seguridad** | Protege tu terminal de comandos destructivos pidiendo confirmación de voz y texto antes de ejecutar acciones críticas. |
 
 ---
@@ -170,12 +172,17 @@ jarvis/
 ├── run_jarvis.bat       ← Lanzador único unificado (autoinstala y arranca el sistema)
 ├── requirements.txt     ← Dependencias del sistema necesarias
 ├── modules/
-│   ├── brain.py         ← Orquestador, Tool Calling y enrutamiento (Claude/Gemini/Ollama)
-│   ├── listener.py      ← Activación por voz (Porcupine/Enter) + VSTT Whisper
-│   ├── speaker.py       ← Voz sintetizada (pyttsx3/ElevenLabs)
+│   ├── brain.py         ← Orquestador, Tool Calling y enrutamiento con Streaming (Claude/Gemini/Ollama)
+│   ├── listener.py      ← Activación por voz local 100% (Vosk) + VSTT Whisper
+│   ├── speaker.py       ← Voz sintetizada con sistema de cola asíncrona (edge-tts/pyttsx3/ElevenLabs)
 │   ├── system.py        ← Controles de Windows, volumen, atajos y teclas multimedia
 │   ├── search.py        ← Búsqueda en la web (DuckDuckGo API)
+│   ├── plugin_manager.py← Gestor dinámico de herramientas
 │   └── reminders.py     ← Hilo de recordatorios y parser NLP de alarmas
+├── plugins/             ← Módulos auto-descubiertos
+│   ├── system_plugin.py ← Herramientas del sistema
+│   ├── web_plugin.py    ← Búsquedas y visión IA
+│   └── memory_plugin.py ← Memoria semántica y alarmas
 ├── memory/
 │   ├── manager.py       ← Base de datos SQLite, embeddings L2 y preferencias
 │   ├── config_user.json ← Ajustes persistentes de la sesión (se crea solo)
@@ -190,8 +197,6 @@ jarvis/
 
 ## 🎙️ Wake Word Personalizado (Opcional)
 
-Por defecto, puedes presionar **Enter** en la consola para activar el micrófono manualmente en cualquier momento. Sin embargo, para usar el comando de voz de activación activa:
+Por defecto, J.A.R.V.I.S 5.0 utiliza el modelo local de **Vosk** que se descarga de forma automática en español. Para activarlo, solo di la palabra: **Jarvis**.
 
-1. Regístrate gratis en **[console.picovoice.ai](https://console.picovoice.ai)**.
-2. Descarga el archivo de modelo "Jarvis" para Windows (`.ppn`) y guárdalo en la carpeta `wake_word/jarvis_windows.ppn`.
-3. Copia tu clave API de Picovoice y pégala como `PICOVOICE_API_KEY` en la configuración del HUD de Jarvis.
+Alternativamente, puedes presionar **Enter** en la consola, o usar el atajo de teclado global **Ctrl + Alt + J** en Windows para activar el micrófono manualmente en cualquier momento.

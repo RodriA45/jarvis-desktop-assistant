@@ -14,6 +14,18 @@ from modules.system import SystemController
 from modules.search import WebSearch
 from modules.reminders import ReminderSystem, parse_reminder_from_text
 from memory.manager import MemoryManager
+from modules.offline_nlp import OfflineNLPController
+
+class LLMBlock:
+    def __init__(self, type_val, **kwargs):
+        self.type = type_val
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+class LLMResponse:
+    def __init__(self, content, stop_reason):
+        self.content = content
+        self.stop_reason = stop_reason
 
 client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -48,210 +60,20 @@ def _get_persona() -> str:
     else:
         return PERSONA_RELAX
 
-
-TOOLS = [
-    {
-        "name": "open_application",
-        "description": "Abre una aplicación instalada en Windows",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "app_name": {
-                    "type": "string",
-                    "description": "Nombre de la app: chrome, firefox, notepad, spotify, vscode, explorer, terminal, calc, paint, word, excel, powerpoint, outlook, teams, discord, steam, vlc"
-                }
-            },
-            "required": ["app_name"]
-        }
-    },
-    {
-        "name": "web_search",
-        "description": "Busca información actualizada en internet.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Término de búsqueda"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "control_volume",
-        "description": "Controla el volumen del sistema",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["up", "down", "mute", "unmute", "set"]
-                },
-                "value": {"type": "integer", "description": "Nivel 0-100"}
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "type_text",
-        "description": "Escribe texto en la aplicación activa",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string"}
-            },
-            "required": ["text"]
-        }
-    },
-    {
-        "name": "take_screenshot",
-        "description": "Toma una captura de pantalla y opcionalmente la analiza con visión IA",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "filename": {"type": "string"},
-                "analyze": {
-                    "type": "boolean",
-                    "description": "Si True, analiza la imagen con Claude Vision y describe lo que ve"
-                }
-            }
-        }
-    },
-    {
-        "name": "open_url",
-        "description": "Abre una URL en el navegador",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"}
-            },
-            "required": ["url"]
-        }
-    },
-    {
-        "name": "run_command",
-        "description": "Ejecuta un comando de Windows (CMD/PowerShell)",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "command": {"type": "string"},
-                "shell": {"type": "string", "enum": ["cmd", "powershell"]}
-            },
-            "required": ["command"]
-        }
-    },
-    {
-        "name": "get_system_info",
-        "description": "Obtiene información del sistema: CPU, RAM, disco, batería, IP",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "info_type": {
-                    "type": "string",
-                    "enum": ["all", "cpu", "ram", "disk", "battery", "network", "processes"]
-                }
-            },
-            "required": ["info_type"]
-        }
-    },
-    {
-        "name": "set_reminder",
-        "description": "Crea un recordatorio o alarma que avisa por voz",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string", "description": "Mensaje del recordatorio"},
-                "seconds": {"type": "number", "description": "Segundos desde ahora"},
-                "repeat_seconds": {
-                    "type": "number",
-                    "description": "Si se especifica, se repite cada N segundos"
-                }
-            },
-            "required": ["text", "seconds"]
-        }
-    },
-    {
-        "name": "list_reminders",
-        "description": "Lista todos los recordatorios activos",
-        "input_schema": {
-            "type": "object",
-            "properties": {}
-        }
-    },
-    {
-        "name": "cancel_reminder",
-        "description": "Cancela un recordatorio por ID",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "reminder_id": {"type": "integer"}
-            },
-            "required": ["reminder_id"]
-        }
-    },
-    {
-        "name": "recall_memory",
-        "description": "Busca en la memoria de conversaciones pasadas",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Qué recordar"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "analyze_screen",
-        "description": "Captura la pantalla y la analiza con visión IA para responder preguntas sobre lo que hay en pantalla",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "question": {
-                    "type": "string",
-                    "description": "Pregunta sobre lo que hay en pantalla"
-                }
-            },
-            "required": ["question"]
-        }
-    },
-    {
-        "name": "media_control",
-        "description": "Controla la reproducción de música de fondo (reproductores activos como Spotify)",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["play_pause", "next", "prev"],
-                    "description": "Acción a realizar: pausar/reanudar (play_pause), siguiente canción (next) o canción anterior (prev)"
-                }
-            },
-            "required": ["action"]
-        }
-    },
-    {
-        "name": "window_control",
-        "description": "Realiza operaciones sobre las ventanas activas en Windows",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["minimize_all", "close_active", "maximize_active", "split_left", "split_right"],
-                    "description": "Acción a realizar: minimizar todo (minimize_all), cerrar activa (close_active), maximizar activa (maximize_active) o acoplar a la izquierda/derecha (split_left/split_right)"
-                }
-            },
-            "required": ["action"]
-        }
-    }
-]
-
-
+from modules.plugin_manager import PluginManager
 class Brain:
     def __init__(self, hud=None, speaker=None):
         self.system = SystemController()
         self.search = WebSearch()
         self.memory = MemoryManager()
         self.hud = hud
+        
+        self.offline_nlp = OfflineNLPController(hud=self.hud)
         self.speaker = speaker  # para recordatorios por voz
+        
+        # Sistema de plugins (modulares)
+        self.plugin_manager = PluginManager(self)
+        self.plugin_manager.load_all_plugins()
 
         # Sistema de recordatorios
         self.reminders = ReminderSystem(
@@ -413,169 +235,49 @@ class Brain:
 
     def _call_claude(self, history, system_prompt=None):
         trimmed = history[-(MEMORY_MAX_TURNS * 2):]
-        return client.messages.create(
+        
+        with client.messages.stream(
             model=CLAUDE_MODEL,
             max_tokens=CLAUDE_MAX_TOKENS,
             system=system_prompt or JARVIS_PERSONA,
-            tools=TOOLS,
+            tools=self.plugin_manager.tools_schema,
             messages=trimmed
-        )
+        ) as stream:
+            sentence_buffer = ""
+            full_text = ""
+            
+            for text_chunk in stream.text_stream:
+                if text_chunk:
+                    sentence_buffer += text_chunk
+                    full_text += text_chunk
+                    
+                    if self.hud:
+                        # Actualiza la UI en tiempo real
+                        self.hud._js(f"window.jarvis && jarvis.setStatus({json.dumps(full_text)})")
+                        
+                    # Procesar oraciones completas
+                    if any(sentence_buffer.endswith(p) for p in [". ", "? ", "! ", ".\n", "\n"]):
+                        if len(sentence_buffer.strip()) > 5:
+                            if self.speaker:
+                                self.speaker.speak_now(sentence_buffer.strip())
+                            sentence_buffer = ""
+                            
+            if sentence_buffer.strip() and self.speaker:
+                self.speaker.speak_now(sentence_buffer.strip())
+                
+            msg = stream.get_final_message()
+            
+            content_blocks = []
+            for block in msg.content:
+                if block.type == "text":
+                    content_blocks.append(LLMBlock("text", text=block.text))
+                elif block.type == "tool_use":
+                    content_blocks.append(LLMBlock("tool_use", id=block.id, name=block.name, input=block.input))
+                    
+            return LLMResponse(content_blocks, msg.stop_reason)
 
     def _call_offline(self, history, system_prompt=None):
-        # Tomar el último mensaje del usuario
-        user_msg = ""
-        for h in reversed(history):
-            if h["role"] == "user" and isinstance(h["content"], str):
-                user_msg = h["content"].lower().strip()
-                break
-
-        class Block:
-            def __init__(self, type, **kwargs):
-                self.type = type
-                for k, v in kwargs.items():
-                    setattr(self, k, v)
-
-        class OfflineResponse:
-            def __init__(self, content, stop_reason):
-                self.content = content
-                self.stop_reason = stop_reason
-
-        # Verificar si es la segunda vuelta (después de ejecutar herramienta)
-        last_item = history[-1]
-        if last_item["role"] == "user" and isinstance(last_item["content"], list):
-            # Es el resultado de la herramienta, devolvemos confirmación o resumen
-            tool_res = last_item["content"][0].get("content", "")
-            clean_res = str(tool_res).replace("\n", " ").strip()
-            # Si viene de una búsqueda web, formatearlo de forma más natural
-            if "duckduckgo-search no instalado" in clean_res.lower() or "error en búsqueda" in clean_res.lower():
-                return OfflineResponse([Block("text", text=f"Señor, no pude completar la búsqueda web. {clean_res}")], "end_turn")
-            
-            # Cortar resultados si son muy largos
-            if len(clean_res) > 300:
-                clean_res = clean_res[:297] + "..."
-            return OfflineResponse([Block("text", text=f"He buscado en internet, señor. Aquí tiene el resultado: {clean_res}")], "end_turn")
-
-        # Reglas NLP básicas para modo demostración
-        # 1. Aplicaciones
-        if "chrome" in user_msg or "google" in user_msg or "navegador" in user_msg:
-            return OfflineResponse([Block("tool_use", id="open_app_chrome", name="open_application", input={"app_name": "chrome"})], "tool_use")
-        elif "bloc de notas" in user_msg or "notepad" in user_msg or "abri bloc" in user_msg:
-            return OfflineResponse([Block("tool_use", id="open_app_notepad", name="open_application", input={"app_name": "notepad"})], "tool_use")
-        elif "spotify" in user_msg or "musica" in user_msg or "reproduci" in user_msg or "reproduce" in user_msg:
-            query = ""
-            for verb in ["reproduci en spotify", "reproduce en spotify", "busca en spotify", "reproduci", "reproduce", "spotify"]:
-                if user_msg.startswith(verb):
-                    query = user_msg[len(verb):].strip()
-                    break
-            if not query:
-                import re
-                m = re.search(r"(?:reproduci|reproduce|busca|escuchar)\s+(?:a\s+|en\s+spotify\s+|la\s+cancion\s+|la\s+canción\s+)?(.+)", user_msg)
-                if m:
-                    query = m.group(1).strip()
-            
-            if query and "musica" not in query:
-                return OfflineResponse([Block("tool_use", id="spotify_play", name="open_url", input={"url": f"spotify_search:{query}"})], "tool_use")
-            else:
-                return OfflineResponse([Block("tool_use", id="open_app_spotify", name="open_application", input={"app_name": "spotify"})], "tool_use")
-        elif "calculadora" in user_msg:
-            return OfflineResponse([Block("tool_use", id="open_app_calc", name="open_application", input={"app_name": "calc"})], "tool_use")
-        elif "consola" in user_msg or "terminal" in user_msg or "cmd" in user_msg:
-            return OfflineResponse([Block("tool_use", id="open_app_term", name="open_application", input={"app_name": "terminal"})], "tool_use")
-        elif "escribi" in user_msg or "tipea" in user_msg:
-            import re
-            match = re.search(r"(?:escribi|tipea)\s+(.+)", user_msg)
-            text_to_type = match.group(1) if match else "Hola mundo"
-            return OfflineResponse([Block("tool_use", id="type_text_cmd", name="type_text", input={"text": text_to_type})], "tool_use")
-        # 2. Volumen
-        elif "volumen" in user_msg or "sonido" in user_msg:
-            if "subi" in user_msg or "aumenta" in user_msg:
-                return OfflineResponse([Block("tool_use", id="vol_up", name="control_volume", input={"action": "up"})], "tool_use")
-            elif "baja" in user_msg or "disminui" in user_msg:
-                return OfflineResponse([Block("tool_use", id="vol_down", name="control_volume", input={"action": "down"})], "tool_use")
-            elif "silencia" in user_msg or "mute" in user_msg or "desactiva" in user_msg:
-                return OfflineResponse([Block("tool_use", id="vol_mute", name="control_volume", input={"action": "mute"})], "tool_use")
-            elif "activa" in user_msg or "unmute" in user_msg:
-                return OfflineResponse([Block("tool_use", id="vol_unmute", name="control_volume", input={"action": "unmute"})], "tool_use")
-            else:
-                import re
-                nums = re.findall(r"\d+", user_msg)
-                val = int(nums[0]) if nums else 50
-                return OfflineResponse([Block("tool_use", id="vol_set", name="control_volume", input={"action": "set", "value": val})], "tool_use")
-        # 3. Multimedia
-        elif "pausa" in user_msg or "reproduce" in user_msg or "musica" in user_msg:
-            return OfflineResponse([Block("tool_use", id="media_play", name="media_control", input={"action": "play_pause"})], "tool_use")
-        elif "siguiente" in user_msg or "proxima" in user_msg:
-            return OfflineResponse([Block("tool_use", id="media_next", name="media_control", input={"action": "next"})], "tool_use")
-        elif "anterior" in user_msg:
-            return OfflineResponse([Block("tool_use", id="media_prev", name="media_control", input={"action": "prev"})], "tool_use")
-        # 4. Ventanas
-        elif "minimiza todo" in user_msg or "escritorio" in user_msg or "minimiza las ventanas" in user_msg:
-            return OfflineResponse([Block("tool_use", id="win_min", name="window_control", input={"action": "minimize_all"})], "tool_use")
-        elif "cierra" in user_msg or "cerra la ventana" in user_msg or "cerra programa" in user_msg:
-            return OfflineResponse([Block("tool_use", id="win_close", name="window_control", input={"action": "close_active"})], "tool_use")
-        elif "acopla a la izquierda" in user_msg or "pantalla izquierda" in user_msg:
-            return OfflineResponse([Block("tool_use", id="win_left", name="window_control", input={"action": "split_left"})], "tool_use")
-        elif "acopla a la derecha" in user_msg or "pantalla derecha" in user_msg:
-            return OfflineResponse([Block("tool_use", id="win_right", name="window_control", input={"action": "split_right"})], "tool_use")
-        # 5. Capturas
-        elif "captura" in user_msg or "foto de pantalla" in user_msg:
-            return OfflineResponse([Block("tool_use", id="screenshot_cmd", name="take_screenshot", input={"analyze": False})], "tool_use")
-        # 6. Telemetría / Sistema
-        # 6.5 Control de energía del sistema operativo
-        elif any(w in user_msg for w in ["bloquear la pc", "bloquea la pc", "bloquear pc", "bloquea pc", "bloquear pantalla", "bloquear la computadora", "bloquea la computadora"]):
-            return OfflineResponse([Block("tool_use", id="sys_lock", name="run_command", input={"command": "lock"})], "tool_use")
-        elif any(w in user_msg for w in ["suspender la pc", "suspender pc", "suspende pc", "suspender la computadora", "suspende la computadora", "suspende la pc"]):
-            return OfflineResponse([Block("tool_use", id="sys_suspend", name="run_command", input={"command": "suspend"})], "tool_use")
-        elif any(w in user_msg for w in ["reiniciar la pc", "reiniciar pc", "reinicia pc", "reiniciar la computadora", "reinicia la computadora"]):
-            return OfflineResponse([Block("tool_use", id="sys_restart", name="run_command", input={"command": "restart"})], "tool_use")
-        elif any(w in user_msg for w in ["apagar la pc", "apagar pc", "apaga pc", "apagar la computadora", "apaga la computadora"]):
-            return OfflineResponse([Block("tool_use", id="sys_shutdown", name="run_command", input={"command": "shutdown"})], "tool_use")
-        elif "sistema" in user_msg or "recursos" in user_msg or "cpu" in user_msg or "ram" in user_msg or "gpu" in user_msg or "disco" in user_msg:
-            return OfflineResponse([Block("tool_use", id="sys_info_cmd", name="get_system_info", input={"info_type": "all"})], "tool_use")
-        # 7. Clima y búsqueda de información general offline (DuckDuckGo integration)
-        elif any(w in user_msg for w in ["clima", "tiempo", "temperatura", "dia hoy", "día hoy"]):
-            # Buscar el clima de hoy por DuckDuckGo
-            return OfflineResponse([Block("tool_use", id="web_search_clima", name="web_search", input={"query": "clima de hoy"})], "tool_use")
-        elif any(w in user_msg for w in ["busca", "buscar", "quien es", "qué es", "que es"]):
-            query = user_msg
-            for verb in ["busca", "buscar", "quien es", "qué es", "que es"]:
-                if query.startswith(verb):
-                    query = query[len(verb):].strip()
-            return OfflineResponse([Block("tool_use", id="web_search_general", name="web_search", input={"query": query})], "tool_use")
-        # 8. Hora y Fecha offline
-        elif "hora" in user_msg:
-            import datetime
-            now_time = datetime.datetime.now().strftime("%H:%M")
-            return OfflineResponse([Block("text", text=f"Son las {now_time}, señor.")], "end_turn")
-        elif any(w in user_msg for w in ["fecha", "día de hoy", "dia de hoy", "que dia es", "qué día es", "dia es"]):
-            import datetime
-            dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-            now = datetime.datetime.now()
-            dia_semana = dias[now.weekday()]
-            mes = meses[now.month - 1]
-            fecha_str = f"Hoy es {dia_semana} {now.day} de {mes} de {now.year}."
-            return OfflineResponse([Block("text", text=fecha_str)], "end_turn")
-        # 9. Apagado offline por voz
-        elif any(w in user_msg for w in ["apagar jarvis", "cerrar jarvis", "cerrate", "apagate"]):
-            if self.hud:
-                self.hud.add_log("warn", "Apagando por comando de voz...")
-                loop = asyncio.get_event_loop()
-                loop.call_soon_threadsafe(self.hud.shutdown)
-            return OfflineResponse([Block("text", text="Entendido, cerrando sistemas de inmediato. Hasta luego, señor.")], "end_turn")
-        # 10. Respuestas generales
-        else:
-            respuestas = {
-                "hola": "Hola señor, estoy operando en modo demostración offline. ¿En qué puedo ayudarlo?",
-                "como estas": "Todos mis sistemas están estables en modo offline, señor.",
-                "quien sos": "Soy J.A.R.V.I.S., su asistente de IA personal para Windows.",
-                "gracias": "De nada, señor. Es un placer."
-            }
-            for k, v in respuestas.items():
-                if k in user_msg:
-                    return OfflineResponse([Block("text", text=v)], "end_turn")
-            
-            return OfflineResponse([Block("text", text="Entendido, señor. Estoy en modo offline de demostración (sin API keys). Puedo controlar volumen, ventanas, abrir aplicaciones o reproducir música si me lo pide.")], "end_turn")
+        return self.offline_nlp.process_offline(history, LLMBlock, LLMResponse)
 
     def _call_llm(self, history, system_prompt=None):
         import config
@@ -591,7 +293,7 @@ class Brain:
     def _map_to_gemini_tools(self):
         gemini_tools = []
         import copy
-        for t in TOOLS:
+        for t in self.plugin_manager.tools_schema:
             schema = copy.deepcopy(t["input_schema"])
             
             def convert_types(s):
@@ -691,47 +393,31 @@ class Brain:
                 if not candidates:
                     raise Exception("No candidates returned from Gemini.")
                 candidate = candidates[0]
-                
-                class Block:
-                    def __init__(self, type, **kwargs):
-                        self.type = type
-                        for k, v in kwargs.items():
-                            setattr(self, k, v)
-                            
                 content_blocks = []
                 parts = candidate.get("content", {}).get("parts", [])
                 stop_reason = "end_turn"
-                
+                text_content = ""
                 for p in parts:
                      if "text" in p:
-                         content_blocks.append(Block("text", text=p["text"]))
+                         text_content += p["text"]
+                         content_blocks.append(LLMBlock("text", text=p["text"]))
                      if "functionCall" in p:
                          fc = p["functionCall"]
                          stop_reason = "tool_use"
-                         content_blocks.append(Block(
+                         content_blocks.append(LLMBlock(
                              "tool_use",
                              id=fc.get("name"),
                              name=fc.get("name"),
                              input=fc.get("args", {})
                          ))
                          
-                class GeminiResponse:
-                     def __init__(self, content, stop_reason):
-                         self.content = content
-                         self.stop_reason = stop_reason
-                         
-                return GeminiResponse(content_blocks, stop_reason)
+                if text_content and self.speaker:
+                    self.speaker.speak_now(text_content)
+                return LLMResponse(content_blocks, stop_reason)
             else:
                 raise Exception(f"Gemini API returned code {res.status_code}: {res.text}")
         except Exception as e:
-            class ErrorResponse:
-                def __init__(self, err):
-                    self.stop_reason = "end_turn"
-                    class ErrorBlock:
-                        type = "text"
-                        text = f"Error conectando a Gemini: {err}. Asegúrate de tener una API key de Gemini válida."
-                    self.content = [ErrorBlock()]
-            return ErrorResponse(e)
+            return LLMResponse([LLMBlock("text", text=f"Error conectando a Gemini: {e}. Asegúrate de tener una API key de Gemini válida.")], "end_turn")
 
 
     def _call_ollama(self, history, system_prompt=None):
@@ -741,7 +427,7 @@ class Brain:
         
         # Mapear herramientas de Anthropic (TOOLS) al formato de herramientas de OpenAI/Ollama
         ollama_tools = []
-        for t in TOOLS:
+        for t in self.plugin_manager.tools_schema:
             ollama_tools.append({
                 "type": "function",
                 "function": {
@@ -817,16 +503,9 @@ class Brain:
                 message = data.get("message", {})
                 text_content = message.get("content", "")
                 tool_calls = message.get("tool_calls", [])
-                
-                class Block:
-                    def __init__(self, type, **kwargs):
-                        self.type = type
-                        for k, v in kwargs.items():
-                            setattr(self, k, v)
-                            
                 content_blocks = []
                 if text_content:
-                    content_blocks.append(Block("text", text=text_content))
+                    content_blocks.append(LLMBlock("text", text=text_content))
                     
                 stop_reason = "end_turn"
                 if tool_calls:
@@ -839,142 +518,23 @@ class Brain:
                                 args = json.loads(args)
                             except Exception:
                                 args = {}
-                        content_blocks.append(Block(
+                        content_blocks.append(LLMBlock(
                             "tool_use",
                             id=tc.get("id", "tool_call_id"),
                             name=fn.get("name", ""),
                             input=args
                         ))
                         
-                class OllamaResponse:
-                    def __init__(self, content, stop_reason):
-                        self.content = content
-                        self.stop_reason = stop_reason
-                        
-                return OllamaResponse(content_blocks, stop_reason)
+                if text_content and self.speaker:
+                    self.speaker.speak_now(text_content)
+                return LLMResponse(content_blocks, stop_reason)
             else:
                 raise Exception(f"Ollama retornó código {res.status_code}: {res.text}")
         except Exception as e:
-            class ErrorResponse:
-                def __init__(self, err):
-                    self.stop_reason = "end_turn"
-                    class ErrorBlock:
-                        type = "text"
-                        text = f"Error conectando a Ollama: {err}. Asegurarse de tener Ollama corriendo."
-                    self.content = [ErrorBlock()]
-            return ErrorResponse(e)
+            return LLMResponse([LLMBlock("text", text=f"Error conectando a Ollama: {e}. Asegurarse de tener Ollama corriendo.")], "end_turn")
 
     def _execute_tool(self, name: str, inputs: dict) -> str:
-        try:
-            if name == "open_application":
-                return self.system.open_app(inputs["app_name"])
-            elif name == "web_search":
-                return self.search.search(inputs["query"])
-            elif name == "control_volume":
-                return self.system.volume(inputs["action"], inputs.get("value", 50))
-            elif name == "type_text":
-                return self.system.type_text(inputs["text"])
-            elif name == "take_screenshot":
-                result = self.system.screenshot(inputs.get("filename"))
-                if inputs.get("analyze"):
-                    path = result.replace("Captura guardada en ", "").replace(".", "")
-                    return self._analyze_image(path, "¿Qué hay en esta captura de pantalla?")
-                return result
-            elif name == "open_url":
-                url = inputs["url"]
-                if url.startswith("spotify_search:"):
-                    q = url.replace("spotify_search:", "")
-                    return self.system.play_spotify(q)
-                return self.system.open_url(url)
-            elif name == "run_command":
-                cmd = inputs["command"]
-                if cmd in ["lock", "suspend", "restart", "shutdown"]:
-                    if cmd == "lock":
-                        return self.system.lock_screen()
-                    elif cmd == "suspend":
-                        return self.system.suspend_pc()
-                    elif cmd == "restart":
-                        return self.system.restart_pc()
-                    elif cmd == "shutdown":
-                        return self.system.shutdown_pc()
-                
-                shell = inputs.get("shell", "cmd")
-                
-                # Palabras clave sospechosas o potencialmente peligrosas
-                dangerous_keywords = [
-                    "del", "rm", "rd", "rmdir", "format", "shutdown", "restart", 
-                    "taskkill", "kill", "stop-process", "remove-item", "reg", 
-                    "setx", "net", "sc", "powershell"
-                ]
-                
-                import re
-                cmd_lower = cmd.lower()
-                is_dangerous = False
-                for kw in dangerous_keywords:
-                    if re.search(rf"\b{kw}\b", cmd_lower):
-                        is_dangerous = True
-                        break
-                
-                if is_dangerous:
-                    warn_msg = f"⚠ Comando potencialmente peligroso detectado: '{cmd}'"
-                    print(f"\n[JARVIS] {warn_msg}")
-                    if self.hud:
-                        self.hud.add_log("warn", "⚠ Comando peligroso detectado")
-                        self.hud.update_status("Esperando confirmación...")
-                    
-                    if self.speaker:
-                        # Avisar por voz de manera segura
-                        msg_hablado = f"Señor, he detectado un comando potencialmente peligroso. ¿Confirma la ejecución de {cmd}?"
-                        self.speaker._speak_sync(msg_hablado)
-                    
-                    print(f"[JARVIS] Escriba 'si' / 'confirmar' para proceder, o cualquier otra cosa para cancelar.")
-                    confirm = input("¿Confirmar ejecución? (s/n): ")
-                    if confirm.lower().strip() in ["s", "si", "yes", "y", "confirmar", "sí"]:
-                        if self.hud:
-                            self.hud.add_log("ok", "Comando confirmado")
-                        return self.system.run_command(cmd, shell)
-                    else:
-                        if self.hud:
-                            self.hud.add_log("warn", "Comando cancelado por seguridad")
-                        return "Comando cancelado por el usuario por motivos de seguridad."
-                else:
-                    return self.system.run_command(cmd, shell)
-            elif name == "get_system_info":
-                return self.system.get_info(inputs["info_type"])
-            elif name == "set_reminder":
-                rid = self.reminders.add(
-                    text=inputs["text"],
-                    seconds_from_now=inputs["seconds"],
-                    repeat_seconds=inputs.get("repeat_seconds")
-                )
-                return f"Recordatorio #{rid} creado: '{inputs['text']}' en {inputs['seconds']}s."
-            elif name == "list_reminders":
-                rems = self.reminders.list_all()
-                if not rems:
-                    return "No hay recordatorios activos."
-                lines = [f"#{r['id']}: {r['text']} (en {r['remaining_seconds']}s)" for r in rems]
-                return "\n".join(lines)
-            elif name == "cancel_reminder":
-                self.reminders.remove(inputs["reminder_id"])
-                return f"Recordatorio #{inputs['reminder_id']} cancelado."
-            elif name == "recall_memory":
-                results = self.memory.search_similar(inputs["query"], top_k=3)
-                if not results:
-                    return "No encontré recuerdos relacionados."
-                lines = []
-                for score, ts, user, response in results:
-                    if score > 0.1:
-                        lines.append(f"[{ts[:10]}] {user[:80]} → {response[:80]}")
-                return "\n".join(lines) if lines else "No encontré nada relevante."
-            elif name == "analyze_screen":
-                return self._take_and_analyze(inputs["question"])
-            elif name == "media_control":
-                return self.system.media_control(inputs["action"])
-            elif name == "window_control":
-                return self.system.window_control(inputs["action"])
-            return f"Tool '{name}' no implementada."
-        except Exception as e:
-            return f"Error ejecutando {name}: {e}"
+        return self.plugin_manager.execute_tool(name, inputs)
 
     def _take_and_analyze(self, question: str) -> str:
         """Toma screenshot y lo analiza con Claude Vision."""

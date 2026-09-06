@@ -101,8 +101,6 @@ async def async_main(hud: JarvisHUD):
             hud.update_status(response)
             hud.add_log("ok", "Respuesta generada")
 
-            await speaker.speak(response)
-
         except KeyboardInterrupt:
             print("\n[JARVIS] Apagando sistema...")
             hud.add_log("warn", "Sistema apagado por el usuario")
@@ -128,10 +126,6 @@ def start_jarvis_backend(hud: JarvisHUD):
 def cleanup_and_exit(signum=None, frame=None):
     print("\n[JARVIS] Apagando J.A.R.V.I.S y cerrando procesos en segundo plano...")
     import os
-    try:
-        os.system("taskkill /f /im ollama.exe >nul 2>&1")
-    except Exception:
-        pass
     os._exit(0)
 
 # Registrar manejadores de señales para un apagado limpio

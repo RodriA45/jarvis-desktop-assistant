@@ -177,6 +177,10 @@ class JarvisHUD:
         safe = data.replace("'", "\\'")
         self._js(f"window.jarvis && jarvis.updateReminders('{safe}')")
 
+    def render_widget(self, html: str):
+        safe_html = html.replace('"', '\\"').replace('\n', ' ')
+        self._js(f'window.jarvis && jarvis.renderWidget("{safe_html}")')
+
     # ── Settings & Control ───────────────────────────────────────────────────
 
     def shutdown(self):
